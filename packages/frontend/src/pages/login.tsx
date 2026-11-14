@@ -1,8 +1,9 @@
 import { AnimatePresence, motion } from 'motion/react';
-import { ArrowRight, Radar } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 import { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Button, Field, Input } from '../components/ui';
+import { FlotillaLogo } from '../components/flotilla-logo';
 import { SonarField } from '../components/sonar-field';
 import { useAuth } from '../lib/auth';
 
@@ -52,17 +53,17 @@ export function Login() {
         <section className="login-rise relative isolate transform-gpu">
           <SonarField className="pointer-events-none absolute -left-40 top-1/2 -z-10 hidden size-[min(64vw,520px)] -translate-y-1/2 opacity-50 md:block" />
           <div className="relative z-10">
-          <div className="mb-6 flex items-center gap-3 text-[10px] uppercase tracking-[0.26em] text-muted">
-            <Radar className="size-4 text-lime" aria-hidden="true" />
+          <div className="mb-7 flex items-center gap-3 text-[10px] uppercase tracking-[0.26em] text-muted">
+            <FlotillaLogo mark alt="" className="size-4 opacity-80" />
             <span className="mono">FLOTILLA / CONTROL PLANE</span>
           </div>
 
-          <h1 style={{ textTransform: 'none' }} className="display title-tight text-[clamp(2rem,3.4vw,3rem)] leading-[0.94] text-paper">
-            Flotilla <span className="text-lime">—</span> 自主渗透测试平台
+          <FlotillaLogo className="h-auto w-[min(360px,70vw)]" />
+          <h1 style={{ textTransform: 'none' }} className="display title-tight mt-6 text-[clamp(1.7rem,2.8vw,2.3rem)] leading-[0.98] text-paper">
+            自主渗透测试平台
           </h1>
-          <p className="mono mt-3 text-[10px] uppercase tracking-[0.24em] text-faint">Autonomous Security Research Platform</p>
 
-          <div className="mt-5 h-px w-full max-w-xl overflow-hidden bg-line">
+          <div className="mt-6 h-px w-full max-w-xl overflow-hidden bg-line">
             <span className="login-rule block h-px w-full bg-lime" />
           </div>
 
@@ -71,7 +72,10 @@ export function Login() {
 
         <section className="login-rise login-rise-card w-full max-w-md transform-gpu justify-self-end border border-line bg-panel/85 p-7 shadow-[0_30px_100px_rgba(0,0,0,0.45)] sm:p-8">
           <div className="flex items-center justify-between">
-            <p className="micro text-lime">SECURE SESSION</p>
+            <div className="flex items-center gap-2">
+              <FlotillaLogo mark alt="" className="size-5" />
+              <p className="micro text-lime">SECURE SESSION</p>
+            </div>
             <span className="pulse-dot inline-block size-1.5 rounded-full bg-lime" aria-hidden="true" />
           </div>
           <form onSubmit={submit} className="mt-6 space-y-4">
@@ -102,7 +106,8 @@ export function Login() {
               transition={{ duration: 0.2, ease: [0.22, 0.61, 0.36, 1], delay: 0.03 }}
               className="border border-lime/30 bg-panel px-8 py-5 text-center"
             >
-              <p className="micro text-lime">SESSION ESTABLISHED</p>
+              <FlotillaLogo mark alt="" className="mx-auto size-10" />
+              <p className="micro mt-3 text-lime">SESSION ESTABLISHED</p>
               <p className="display mt-2 text-lg text-paper">正在进入控制面</p>
             </motion.div>
           </motion.div>

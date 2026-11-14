@@ -5,7 +5,6 @@ import {
   CheckCircle2,
   FileText,
   Gauge,
-  Radar,
   Target,
 } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -18,6 +17,7 @@ import type { Severity } from '../lib/types';
 import { missionLabel } from '../lib/format';
 import { cn } from '../lib/utils';
 import { MissionStatus } from '../components/status-badge';
+import { FlotillaLogo } from '../components/flotilla-logo';
 import { ErrorState, Panel, SectionLabel, Skeleton } from '../components/ui';
 import { MetricsDashboard } from '../components/metrics-dashboard';
 
@@ -65,7 +65,7 @@ export function Overview() {
       <section className="relative grid gap-4 overflow-hidden border-b border-line pb-5 lg:grid-cols-[1fr_auto] lg:items-end">
         <div className="relative z-10">
           <div className="mb-2 flex items-center gap-3 text-[10px] uppercase tracking-[0.22em] text-muted">
-            <Radar className="size-3.5 text-lime" aria-hidden="true" />
+            <FlotillaLogo mark alt="" className="size-3.5" />
             <span className="mono">00 / OVERVIEW</span>
             <span className="h-px w-12 bg-line" aria-hidden="true" />
             <span>Control Plane</span>

@@ -5,7 +5,6 @@ import {
   FileText,
   LayoutDashboard,
   Menu,
-  Radar,
   Settings,
   ShieldCheck,
   Target,
@@ -19,6 +18,7 @@ import { formatShortDate, relativeTime } from '../lib/format';
 import { useNow } from '../lib/hooks';
 import { cn } from '../lib/utils';
 import { BackgroundField } from './background';
+import { FlotillaLogo } from './flotilla-logo';
 
 interface NavItemDef {
   to: string;
@@ -161,6 +161,7 @@ export function Shell() {
               {mobileOpen ? <X className="size-4" aria-hidden="true" /> : <Menu className="size-4" aria-hidden="true" />}
             </button>
             <div className="flex min-w-0 items-baseline gap-3">
+              <FlotillaLogo mark alt="" className="size-5 shrink-0 opacity-90" />
               <span className="mono hidden text-[10px] tracking-[0.25em] text-faint sm:inline">FLOTILLA/</span>
               <h1 className="truncate text-sm font-semibold uppercase tracking-[0.18em] text-paper">{title}</h1>
             </div>
@@ -203,7 +204,7 @@ export function Shell() {
 
           <footer className="border-t border-line px-4 py-4 text-[10px] uppercase tracking-[0.18em] text-faint sm:px-8">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <span>Flotilla · 自主渗透测试平台</span>
+              <span className="inline-flex items-center gap-2"><FlotillaLogo mark alt="" className="size-4 opacity-75" />Flotilla · 自主渗透测试平台</span>
               <span className="mono normal-case tracking-normal">更新于 {formatShortDate(now.toISOString())} · {relativeTime(now.toISOString())}</span>
             </div>
           </footer>
@@ -215,20 +216,9 @@ export function Shell() {
 
 function Brand() {
   return (
-    <NavLink to="/" className="group block">
-      <div className="flex items-center gap-2">
-        <Radar className="size-5 text-lime transition-transform duration-500 group-hover:rotate-90" aria-hidden="true" />
-        <span className="micro text-paper">Flotilla · Control Plane</span>
-      </div>
-      <div className="mt-3">
-        <div className="display text-[26px] leading-none tracking-[-0.03em] text-paper">FLOT</div>
-        <div className="display text-[26px] leading-none tracking-[-0.03em] text-lime">ILLA</div>
-      </div>
-      <p className="mt-3 text-[11px] leading-relaxed text-muted">
-        自主渗透测试平台
-        <br />
-        Autonomous Security Research
-      </p>
+    <NavLink to="/" className="group block" aria-label="Flotilla 首页">
+      <FlotillaLogo className="h-auto w-[204px] transition-opacity duration-300 group-hover:opacity-90" />
+      <p className="mt-3 text-[10px] uppercase tracking-[0.18em] text-muted">自主渗透测试平台</p>
     </NavLink>
   );
 }

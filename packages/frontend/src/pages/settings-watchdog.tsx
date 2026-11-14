@@ -1,5 +1,5 @@
-import { Activity, ArrowUpRight, Gauge, Radar, RefreshCw, ShieldAlert, Target } from 'lucide-react';
-import { useState } from 'react';
+import { Activity, ArrowUpRight, ChevronDown, ChevronUp, Gauge, Radar, RefreshCw, ShieldAlert, Target } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PageHeader } from '../components/shell';
 import { SettingsNav } from '../components/settings-nav';
@@ -15,7 +15,7 @@ import type { WatchdogObservation } from '../lib/types';
 const RULE_LABEL: Record<string, string> = {
   duplicate_url: '重复请求',
   no_progress: '无进展',
-  direction_drift: '方向漂移',
+  direction_drift: '漂移',
 };
 
 const ACTION_LABEL: Record<string, string> = {
@@ -56,9 +56,9 @@ function Stat({ label, value, hint }: { label: string; value: string; hint?: str
 
 function ObservationRow({ item }: { item: WatchdogObservation }) {
   return (
-    <li className="grid gap-2 border-b border-line/60 px-3 py-2.5 last:border-0 md:grid-cols-[9rem_7rem_1fr_6rem_6rem]">
+    <li className="grid gap-2 border-b border-line/60 px-3 py-2.5 last:border-0 md:grid-cols-[9rem_8rem_minmax(0,1fr)_6rem_8rem]">
       <div className="text-[10px] text-faint mono">{formatDate(item.createdAt)}</div>
-      <div className="flex flex-wrap items-center gap-1.5">
+      <div className="flex flex-nowrap items-center gap-1.5">
         <Badge tone={item.action === 'escalated' ? 'ember' : 'neutral'}>{RULE_LABEL[item.rule] ?? item.rule}</Badge>
         <Badge tone={actionTone(item.action)}>{ACTION_LABEL[item.action] ?? item.action}</Badge>
       </div>
@@ -76,7 +76,7 @@ function ObservationRow({ item }: { item: WatchdogObservation }) {
       <div>
         <Badge tone={outcomeTone(item.outcome)}>{OUTCOME_LABEL[item.outcome] ?? item.outcome}</Badge>
       </div>
-      <div className="text-[10px] text-faint">
+      <div className="whitespace-nowrap text-[10px] text-faint">
         {item.outcome === 'pending'
           ? '等待 10 分钟窗口'
           : `findings+${Number(item.outcomeDetail?.newFindings ?? 0)} / urls+${Number(item.outcomeDetail?.newUrls ?? 0)}`}
@@ -88,7 +88,14 @@ function ObservationRow({ item }: { item: WatchdogObservation }) {
 export function SettingsWatchdog() {
   const [days, setDays] = useState(7);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [escalationsExpanded, setEscalationsExpanded] = useState(false);
+  const [recentExpanded, setRecentExpanded] = useState(false);
   const data = useAsync(async () => (await api.getWatchdogDashboard(days, 100)).watchdog, [days, refreshKey]);
+
+  useEffect(() => {
+    setEscalationsExpanded(false);
+    setRecentExpanded(false);
+  }, [days]);
 
   return (
     <div className="mx-auto w-full max-w-[1500px]">
@@ -180,24 +187,52 @@ export function SettingsWatchdog() {
           </div>
 
           <Panel className="p-4">
-            <SectionLabel index="C" right={<ShieldAlert className="size-3.5 text-muted" aria-hidden="true" />}>升级记录</SectionLabel>
+            <SectionLabel
+              index="C"
+              right={<span className="inline-flex items-center gap-2"><span className="mono text-[10px] text-faint">{data.data.escalations.length}</span><ShieldAlert className="size-3.5 text-muted" aria-hidden="true" /></span>}
+            >
+              升级记录
+            </SectionLabel>
             {data.data.escalations.length === 0 ? (
               <p className="mt-3 text-xs text-muted">窗口内没有升级。连续 {`stalled`} 达到阈值才会升级。</p>
             ) : (
-              <ul className="mt-3 border border-line">
-                {data.data.escalations.map(item => <ObservationRow key={item.id} item={item} />)}
-              </ul>
+              <>
+                <ul className="mt-3 border border-line">
+                  {(escalationsExpanded ? data.data.escalations : data.data.escalations.slice(0, 2)).map(item => <ObservationRow key={item.id} item={item} />)}
+                </ul>
+                {data.data.escalations.length > 2 ? (
+                  <div className="mt-2 flex justify-end">
+                    <Button variant="ghost" icon={escalationsExpanded ? <ChevronUp className="size-3.5" aria-hidden="true" /> : <ChevronDown className="size-3.5" aria-hidden="true" />} onClick={() => setEscalationsExpanded(value => !value)}>
+                      {escalationsExpanded ? '收起' : `展开全部 ${data.data.escalations.length} 条`}
+                    </Button>
+                  </div>
+                ) : null}
+              </>
             )}
           </Panel>
 
           <Panel className="p-4">
-            <SectionLabel index="D" right={<Activity className="size-3.5 text-muted" aria-hidden="true" />}>最近观测</SectionLabel>
+            <SectionLabel
+              index="D"
+              right={<span className="inline-flex items-center gap-2"><span className="mono text-[10px] text-faint">{data.data.recent.length}</span><Activity className="size-3.5 text-muted" aria-hidden="true" /></span>}
+            >
+              最近观测
+            </SectionLabel>
             {data.data.recent.length === 0 ? (
               <p className="mt-3 text-xs text-muted">窗口内没有观测记录。</p>
             ) : (
-              <ul className="mt-3 border border-line">
-                {data.data.recent.slice(0, 50).map(item => <ObservationRow key={item.id} item={item} />)}
-              </ul>
+              <>
+                <ul className="mt-3 border border-line">
+                  {(recentExpanded ? data.data.recent.slice(0, 50) : data.data.recent.slice(0, 2)).map(item => <ObservationRow key={item.id} item={item} />)}
+                </ul>
+                {data.data.recent.length > 2 ? (
+                  <div className="mt-2 flex justify-end">
+                    <Button variant="ghost" icon={recentExpanded ? <ChevronUp className="size-3.5" aria-hidden="true" /> : <ChevronDown className="size-3.5" aria-hidden="true" />} onClick={() => setRecentExpanded(value => !value)}>
+                      {recentExpanded ? '收起' : `展开全部 ${data.data.recent.length} 条`}
+                    </Button>
+                  </div>
+                ) : null}
+              </>
             )}
           </Panel>
 

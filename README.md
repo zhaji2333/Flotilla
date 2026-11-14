@@ -9,7 +9,7 @@
 ![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
-填好目标资产（URL、IP 或域名）、任务目标和授权范围，Flotilla 就能开一个项目：Worker 领任务，Executor 在隔离环境里调用 HTTP、浏览器、APK/ELF 逆向工具，Curator 复核 Finding（发现），项目收尾时 Summary 出报告。Planner 会持续读快照、改计划、补任务。控制台可实时查看，也能暂停、注入提示或手动派单。
+填好目标资产（URL、IP 或域名）、任务目标和授权范围，Flotilla 就能开一个项目：Planner 默认随栈启动，持续读快照、改计划、补任务；Worker 领任务，Executor 在隔离环境里调用 HTTP、浏览器、APK/ELF 逆向工具，Curator 复核 Finding（发现），项目收尾时 Summary 出报告。控制台可实时查看，也能暂停、注入提示或手动派单。
 
 ## 核心机制
 

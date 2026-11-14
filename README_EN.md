@@ -20,9 +20,9 @@
 
 ---
 
-An autonomous penetration testing platform for explicitly authorized security testing — it plans, reviews, and self-corrects, with evidence for every step.
+Flotilla is a **multi-graph + multi-agent penetration testing system built around the Super Agent architectural idea**.
 
-Some call pentesting a craft; others call it a game of patience and greed. Flotilla hands the game to a fleet of planners, workers, and executors: they hunt for clues, record evidence, and correct one another, flushing out every blind spot within the authorized scope. All you do is sit at the console and decide which sea to sail next.
+「"I meant to put some poetry, proverbs, or other chuunibyou lines here — but nothing came to mind."」
 
 `Super Agent Architecture` · `Multi-graph & Shared Memory` · `Agent Full-Duplex Runtime` · `Watch Dog Self-Correction` · `Multi-Agent Autonomy` · `Auditable Evidence Chain`
 
@@ -46,16 +46,47 @@ After you create a project in the console, workers claim tasks automatically. Se
 
 Flotilla is a **multi-graph + multi-agent penetration testing system built around the Super Agent architectural idea**. Give it target assets (URL, IP, domain, attachment), an objective, and an authorized scope; it autonomously performs reconnaissance, validation, and evidence collection inside the authorization boundary, and produces a summary report when the project wraps up.
 
-> This is a side project I built while slacking off at work… The README was written by AI and has a certain smell — even I find it hard to read — so here is the short version:
+> [!NOTE]
+> A side project I built while slacking off at work…
+>
+> The README was written by AI and has a certain smell — even I find it hard to read — so here is the short version:
 
-- The classic trio, done properly: role-based Multi-Agent (the Planner handles planning, decisions, and scheduling; the Worker is the task controller and can itself call Sub Agents; the Watch Dog patrols like a dog, watching whether the current task is drifting and correcting it) + a DAG graph, a blackboard, PostgreSQL + vulnerability authenticity validation, risky-command interception during pentesting, and so on.
-- It borrows some ideas from DeepSeek's Super Agent architecture (two-layer split, event-driven, batching, full-duplex, watchdog) to achieve continuous, proactive, efficient, and persistent operation.
-- Compliance logging is straightforward: every project, task, and Agent trace is explicitly recorded. Drift beyond the authorized boundary is still possible, so an LLM is used for boundary judgement — but that does not make it risk-free… if something goes wrong, all you can do is run.
-- You can inject hints while a task is running and boldly hand your ideas and suggestions to the AI, enabling wish-driven pentesting (?).
-- Future idea: from a client's perspective, I am an Agent too; my Agent is actually my Sub Agent, and my Agent's Sub Agent… so why not let clients call my Agent directly? I want the system to receive tasks from WeChat / WeCom / Feishu, run projects automatically, and report back to the user. As a poor security service engineer, I also want token-cost limits to reduce my own expenses.
-- Last but not least: this project gave me some spare time to think about whether low-dignity, low-autonomy work that means nothing beyond earning a salary still has any meaning.
+### 01. Core design
+- **Classic orchestration**
+  - `Planner`: handles planning, decisions, and scheduling.
+  - `Worker`: task controller; can itself call Sub Agents.
+  - `Watch Dog`: patrols like a dog, watching whether the current task is drifting and self-correcting.
+- **Thunder graphs**: DAG graph, exploration graph, asset graph, blackboard, PostgreSQL.
+- **Avoiding jail**: vulnerability authenticity validation, risky-command interception during pentesting, and so on.
 
-> One more plug: my pentesting SKILLs have been updated to v2 ([CkSKILLS v2](https://github.com/zhaji2333/CkSKILLS/tree/v2)).
+### 02. Architecture references
+Borrowed some ideas from **DeepSeek Super Agent** architecture:
+`two-layer` · `event-driven` · `batching` · `full-duplex` · `watchdog`
+to achieve continuous, proactive, efficient, and persistent operation.
+
+### 03. Compliance and logging
+Nothing much to say here: every project, task, and Agent trace is explicitly recorded.
+Drift beyond the authorized boundary is still possible, so an LLM is used for boundary judgement.
+**But that does not make it risk-free… if something goes wrong, all you can do is run.**
+
+### 04. Human-AI collaboration
+You can inject hints while a task is running and boldly hand your ideas and suggestions to the AI, enabling **wish-driven pentesting (?)**.
+
+### 05. Future ideas
+From a client's perspective, I am an Agent too; my Agent is actually my Sub Agent, and my Agent's Sub Agent…
+**So why not let clients call my Agent directly?**
+I want the system to receive tasks from WeChat / WeCom / Feishu, run projects automatically, produce reports, and feed them back to users.
+As a poor security service engineer, I also want token-cost limits to reduce my own expenses.
+
+### 06. Last but not least
+> This project gave me some spare time to think:
+> does low-dignity, low-autonomy work that means nothing beyond earning a salary still have any meaning?
+
+---
+**One more plug: my pentesting SKILLs are now v2:**
+[**CkSKILLS v2 →**](https://github.com/zhaji2333/CkSKILLS/tree/v2)
+---
+> Also, why do so many Agent products these days use ancient-style ci-poetry names + chuunibyou + a bit of poetry?
 
 ---
 

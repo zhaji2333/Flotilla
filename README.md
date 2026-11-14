@@ -78,7 +78,7 @@ Flotilla 是一个**基于 Super Agent 架构思路的多图+多智能体渗透�
 > 除了赚工资以外没有任何意义的低尊严、低自主性工作，是否仍然存在一些意义？
 ---
 **再安利一下我的渗透 SKILL，已经更新 v2 版本：**
-[**CkSKILLS v2 →**](https://github.com/zhaji2333/CkSKILLS/tree/v2)
+[**CkSKILLS v2 →**](https://github.com/zhaji2333/CkSKILLS)
 ---
 
 ---
@@ -339,7 +339,7 @@ flotilla/
 
 Flotilla 的设计与技能体系参考、对照了这些项目：
 
-- [CkSKILLS v2](https://github.com/zhaji2333/CkSKILLS/tree/v2)：本项目 16 个技能包的来源与上游维护仓库（自有）。
+- [CkSKILLS v2](https://github.com/zhaji2333/CkSKILLS)：本项目 16 个技能包的来源与上游维护仓库（自有）。
 - [agent-skills](https://github.com/addyosmani/agent-skills)：开发方法论与工程技能（MIT）。
 - [JADX](https://github.com/skylot/jadx)：APK 反编译（Apache-2.0，vendored）。
 - [Playwright](https://github.com/microsoft/playwright)：浏览器自动化（Apache-2.0）。

@@ -84,7 +84,7 @@ As a poor security service engineer, I also want token-cost limits to reduce my 
 
 ---
 **One more plug: my pentesting SKILLs are now v2:**
-[**CkSKILLS v2 →**](https://github.com/zhaji2333/CkSKILLS/tree/v2)
+[**CkSKILLS v2 →**](https://github.com/zhaji2333/CkSKILLS)
 ---
 
 ---
@@ -345,7 +345,7 @@ flotilla/
 
 Flotilla's design and skill system reference and compare with these projects:
 
-- [CkSKILLS v2](https://github.com/zhaji2333/CkSKILLS/tree/v2): the source and upstream maintenance repository of this project's 16 skill packs (project-owned).
+- [CkSKILLS v2](https://github.com/zhaji2333/CkSKILLS): the source and upstream maintenance repository of this project's 16 skill packs (project-owned).
 - [agent-skills](https://github.com/addyosmani/agent-skills): development methodology and engineering skills (MIT).
 - [JADX](https://github.com/skylot/jadx): APK decompilation (Apache-2.0, vendored).
 - [Playwright](https://github.com/microsoft/playwright): browser automation (Apache-2.0).

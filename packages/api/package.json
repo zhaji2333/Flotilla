@@ -1,0 +1,23 @@
+{
+  "name": "@src-agent/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx src/server.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test src/model-proxy.test.ts src/model-config-test.test.ts src/password-policy.test.ts",
+    "lint": "oxlint src/"
+  },
+  "dependencies": {
+    "@src-agent/control-plane": "workspace:*",
+    "busboy": "1.6.0",
+    "tsx": "^4.23.15",
+    "zod": "^4.6.6"
+  },
+  "devDependencies": {
+    "@types/busboy": "1.5.4",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0"
+  }
+}

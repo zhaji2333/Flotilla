@@ -1,0 +1,5 @@
+#!/bin/zsh
+# Droid ASC wrapper (出处: https://github.com/MG1937/ASC)
+# 等价于 .venv/bin/droidasc。子命令: getclass | disassemble | listclass | getmanifest | findrefs
+ASC_HOME="$(cd "$(dirname "$0")" && pwd)"
+exec "$ASC_HOME/.venv/bin/droidasc" "$@"

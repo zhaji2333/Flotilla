@@ -1,0 +1,30 @@
+{
+  "name": "@src-agent/orchestrator",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.ts",
+  "scripts": {
+    "build": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "lint": "oxlint src/"
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh": "0.2.2-rc.1",
+    "@src-agent/contracts": "workspace:*",
+    "@src-agent/control-plane": "workspace:*",
+    "@src-agent/curator": "workspace:*",
+    "@src-agent/harness-plugin": "workspace:*",
+    "@src-agent/tool-gateway": "workspace:*",
+    "pg": "^8.13.1",
+    "undici": "^8.12.3",
+    "zod": "^4.6.6"
+  },
+  "devDependencies": {
+    "tsx": "^4.23.15",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0",
+    "@types/pg": "^8.11.10"
+  }
+}

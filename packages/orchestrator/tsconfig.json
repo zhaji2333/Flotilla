@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "resolveJsonModule": true,
+    "verbatimModuleSyntax": true,
+    "paths": {
+      "@src-agent/contracts": ["../contracts/src/index.ts"],
+      "@src-agent/control-plane": ["../control-plane/src/index.ts"],
+      "@src-agent/tool-gateway": ["../tool-gateway/src/index.ts"]
+    }
+  },
+  "include": ["src/**/*"]
+}

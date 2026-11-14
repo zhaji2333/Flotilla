@@ -1,0 +1,12 @@
+# SRC-Agent bundle layer for DeepSeek Harness profiles.
+#
+# Inserts the SRC-Agent tool plugin and removes Harness' built-in web tools:
+# target/internet egress must stay behind the audited SRC-Agent proxy with
+# evidence capture, so `web_fetch` is provided by `@src-agent/harness-plugin`
+# instead of the unrecorded built-in fetch.
+- insert:
+    - id: src-agent-tools
+      name: '@src-agent/harness-plugin'
+
+- id: tool-web
+  disabled: true

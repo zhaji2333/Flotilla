@@ -1,0 +1,2842 @@
+openapi: 3.1.0
+info:
+  title: Flotilla Frontend API
+  version: 1.0.0
+  description: |
+    Flotilla 控制面只读投影 + 人工动作 API（v1，契约冻结）。
+    前端只通过本契约消费数据；独立 API 服务（packages/api）与旧 web API 暴露同一路径/schema。
+    P3-A2 起 /api/metrics 返回指标目录（ADR-0019 后为 12 项）（indicators）；P3-A1 起新增 trace-summaries。
+servers:
+  - url: http://127.0.0.1:3001
+    description: 独立 API 服务（packages/api）
+  - url: http://127.0.0.1:5173
+    description: 旧 Next API（过渡回退）
+security:
+  - bearerAuth: []
+tags:
+  - name: system
+  - name: missions
+  - name: findings
+  - name: approvals
+  - name: hints
+  - name: triggers
+  - name: traces
+paths:
+  /api/health:
+    get:
+      security: []
+      tags: [system]
+      operationId: getHealth
+      summary: 健康检查与出站模式
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+        '503':
+          description: 数据库不可用
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/auth/login:
+    post:
+      security: []
+      tags: [auth]
+      operationId: login
+      summary: 单管理员会话登录（ADR-0038）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username: { type: string }
+                password: { type: string, format: password }
+      responses:
+        '200':
+          description: 登录成功；Set-Cookie src_agent_session
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [user, csrfToken]
+                properties:
+                  user:
+                    type: object
+                    additionalProperties: true
+                  csrfToken: { type: string }
+                  expiresAt: { type: string, format: date-time }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /api/auth/me:
+    get:
+      security: []
+      tags: [auth]
+      operationId: getSession
+      summary: 当前会话（含 mustChangePassword / authMode）
+      responses:
+        '200':
+          description: 会话信息
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /api/auth/logout:
+    post:
+      security: []
+      tags: [auth]
+      operationId: logout
+      summary: 注销会话并清 cookie
+      responses:
+        '200':
+          description: OK
+  /api/auth/password:
+    post:
+      tags: [auth]
+      operationId: changeOwnPassword
+      summary: 修改自己的密码（≥12 位，含大小写/数字/特殊字符；成功后吊销旧会话）
+      description: 首次登录未改密时，除 /api/health、/api/auth/{me,password,logout} 外全部 403 password_change_required。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [currentPassword, newPassword]
+              properties:
+                currentPassword: { type: string, format: password }
+                newPassword: { type: string, format: password }
+      responses:
+        '200':
+          description: 已改密
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '400':
+          description: 校验失败（issues[].path=newPassword）
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/missions:
+    get:
+      tags: [missions]
+      operationId: listMissions
+      summary: 任务列表（最新 50 条）
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [missions, total]
+                properties:
+                  missions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MissionListItem'
+                  total:
+                    type: integer
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    post:
+      tags: [missions]
+      operationId: createMission
+      summary: 创建任务（JSON 或 multipart：目标 + 附件一起提交）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateMissionRequest'
+          multipart/form-data:
+            schema:
+              type: object
+              required: [objective]
+              properties:
+                targetMode:
+                  type: string
+                  enum: [attachment]
+                  description: 纯附件项目；target 可省略，但必须至少上传一个 artifact
+                target:
+                  type: string
+                  description: JSON 字符串，如 {"type":"url","value":"http://127.0.0.1:65280"}
+                targetType: { type: string, enum: [url, domain, ip] }
+                targetValue: { type: string }
+                name: { type: string }
+                objective: { type: string }
+                maxSteps: { type: integer }
+                maxWallClockMs: { type: integer }
+                methodology: { type: string }
+                scopeExtras:
+                  type: string
+                  description: JSON 字符串
+                priority: { type: number }
+                coverageGate:
+                  type: string
+                  description: JSON 字符串
+                artifact:
+                  type: array
+                  maxItems: 20
+                  items:
+                    type: string
+                    format: binary
+                file:
+                  type: array
+                  maxItems: 20
+                  items:
+                    type: string
+                    format: binary
+                files:
+                  type: array
+                  maxItems: 20
+                  items:
+                    type: string
+                    format: binary
+      responses:
+        '201':
+          description: 已创建
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreatedMission'
+        '400':
+          description: JSON 非法 / 校验失败 / 创建失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorOrIssues'
+  /api/missions/{id}:
+    parameters:
+      - $ref: '#/components/parameters/MissionId'
+    get:
+      tags: [missions]
+      operationId: getMission
+      summary: 任务详情（含任务、待办、触发器、提示、审批、Planner 运行）
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [mission]
+                properties:
+                  mission:
+                    $ref: '#/components/schemas/MissionDetail'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/missions/{id}/summary:
+    parameters:
+      - $ref: '#/components/parameters/MissionId'
+    get:
+      tags: [missions]
+      operationId: getMissionSummary
+      summary: Summary 报告（任务终态后由 executor 生成；未生成时 summary=null）
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  summary:
+                    type: [object, 'null']
+                    additionalProperties: true
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/missions/{id}/pause:
+    parameters:
+      - $ref: '#/components/parameters/MissionId'
+    post:
+      tags: [missions]
+      operationId: pauseMission
+      summary: 暂停任务并写 checkpoint
+      responses:
+        '200':
+          description: 已暂停
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [mission]
+                properties:
+                  mission:
+                    $ref: '#/components/schemas/MissionControlResult'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: 当前状态不可暂停
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/missions/{id}/resume:
+    parameters:
+      - $ref: '#/components/parameters/MissionId'
+    post:
+      tags: [missions]
+      operationId: resumeMission
+      summary: 恢复任务，从 checkpoint 续跑
+      responses:
+        '200':
+          description: 已恢复（或恢复时直接终结）
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [mission]
+                properties:
+                  mission:
+                    $ref: '#/components/schemas/MissionControlResult'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: 不是 paused 状态
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/missions/{id}/stream:
+    parameters:
+      - $ref: '#/components/parameters/MissionId'
+    get:
+      tags: [missions]
+      operationId: streamMission
+      summary: SSE 实时快照（每 2 秒）
+      responses:
+        '200':
+          description: |
+            text/event-stream；每个 data 帧为以下 JSON 之一：
+            - {"type":"mission","missionId":"...","state":"running","findings":2,"tasks":1,"openTasks":1,"triggers":0,"pendingApprovals":0,"updatedAt":"..."}
+            - {"type":"error","error":"..."}
+            - {"type":"gone","missionId":"..."}
+          content:
+            text/event-stream:
+              schema:
+                type: string
+  /api/findings:
+    get:
+      tags: [findings]
+      operationId: listFindings
+      summary: 发现列表（最近 100 条）
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [findings, total]
+                properties:
+                  findings:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/FindingListItem'
+                  total:
+                    type: integer
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/findings/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [findings]
+      operationId: getFinding
+      summary: 发现详情（报告 + 证据正文）
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [finding]
+                properties:
+                  finding:
+                    $ref: '#/components/schemas/FindingDetail'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/findings/{id}/lineage:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [findings]
+      operationId: getFindingLineage
+      summary: 派生 finding 血缘（同 mission）
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [lineage]
+                properties:
+                  lineage:
+                    type: object
+                    additionalProperties: true
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/missions/{id}/tasks:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [missions]
+      operationId: createManualTask
+      summary: 手动派发独立 intent（P1 1.7）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [objective]
+              properties:
+                objective: { type: string, minLength: 1, maxLength: 2000 }
+                angle: { type: string, enum: [web, api, infra, binary] }
+                priority: { type: number, minimum: 0, maximum: 1 }
+                maxSteps: { type: integer, minimum: 0, maximum: 3000 }
+                maxWallClockMs: { type: integer, minimum: 0, maximum: 7200000 }
+                artifactIds:
+                  type: array
+                  maxItems: 20
+                  items: { type: string, format: uuid }
+      responses:
+        '201':
+          description: 已创建
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [taskId, state]
+                properties:
+                  taskId: { type: string, format: uuid }
+                  state: { type: string }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /api/missions/{id}/tasks/{taskId}/cancel:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: taskId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [missions]
+      operationId: cancelTask
+      summary: 取消单个任务（controller 软取消）
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason: { type: string, maxLength: 500 }
+      responses:
+        '200':
+          description: 已取消
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  taskId: { type: string, format: uuid }
+                  missionId: { type: string, format: uuid }
+                  state: { type: string }
+  /api/missions/{id}/tasks/{taskId}/confirm-retry:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: taskId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [missions]
+      operationId: confirmTaskRetry
+      summary: 确认写动作后重试 blocked 任务
+      responses:
+        '200':
+          description: 已放行
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  taskId: { type: string, format: uuid }
+                  missionId: { type: string, format: uuid }
+                  state: { type: string }
+                  actionCount: { type: integer }
+  /api/missions/{id}/tasks/{taskId}/actions:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: taskId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: limit
+        in: query
+        schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+    get:
+      tags: [missions]
+      operationId: listTaskActions
+      summary: 查询任务的写动作账本
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  actions: { type: array, items: { type: object } }
+                  total: { type: integer }
+  /api/missions/{id}/action-ledger:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: limit
+        in: query
+        schema: { type: integer, minimum: 1, maximum: 200, default: 100 }
+    get:
+      tags: [missions]
+      operationId: listMissionActionLedger
+      summary: 查询 mission 的写动作账本
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  actions: { type: array, items: { type: object } }
+                  total: { type: integer }
+  /api/missions/{id}/steering:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: limit
+        in: query
+        schema: { type: integer, minimum: 1, maximum: 200, default: 100 }
+    get:
+      tags: [missions]
+      operationId: listSteering
+      summary: 人工任务控制审计
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  commands: { type: array, items: { type: object } }
+                  total: { type: integer }
+  /api/approvals:
+    get:
+      tags: [approvals]
+      operationId: listApprovals
+      summary: 审批列表（最近 100 条，pending 优先）
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [pending, approved, rejected]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [approvals, total]
+                properties:
+                  approvals:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Approval'
+                  total:
+                    type: integer
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    post:
+      tags: [approvals]
+      operationId: createApproval
+      summary: 新建人工审批请求
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [missionId, type]
+              properties:
+                missionId:
+                  type: string
+                  format: uuid
+                type:
+                  type: string
+                  minLength: 1
+                  maxLength: 64
+                payload:
+                  type: object
+                  additionalProperties: true
+                  default: {}
+      responses:
+        '201':
+          description: 已创建
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [approvalId]
+                properties:
+                  approvalId:
+                    type: string
+                    format: uuid
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /api/approvals/{id}/decide:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      tags: [approvals]
+      operationId: decideApproval
+      summary: 批准/拒绝审批
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [decision]
+              properties:
+                decision:
+                  type: string
+                  enum: [approved, rejected]
+                decidedBy:
+                  type: string
+                  minLength: 1
+                  maxLength: 120
+                note:
+                  type: string
+                  maxLength: 2000
+      responses:
+        '200':
+          description: 决策完成
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [approval]
+                properties:
+                  approval:
+                    $ref: '#/components/schemas/Approval'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: 已决策 / 并发冲突
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/hints:
+    get:
+      tags: [hints]
+      operationId: listHints
+      summary: 任务提示队列
+      parameters:
+        - name: missionId
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [hints, total]
+                properties:
+                  hints:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Hint'
+                  total:
+                    type: integer
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    post:
+      tags: [hints]
+      operationId: createHint
+      summary: 追加控制面提示
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [missionId, content]
+              properties:
+                missionId:
+                  type: string
+                  format: uuid
+                taskId:
+                  type: string
+                  format: uuid
+                content:
+                  type: string
+                  minLength: 1
+                  maxLength: 4000
+                source:
+                  type: string
+                  minLength: 1
+                  maxLength: 64
+                kind:
+                  type: string
+                  enum: [guidance, help, report]
+      responses:
+        '201':
+          description: 已入队
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [hintId]
+                properties:
+                  hintId:
+                    type: string
+                    format: uuid
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /api/triggers:
+    get:
+      tags: [triggers]
+      operationId: listTriggers
+      summary: 触发器路由审计
+      parameters:
+        - name: missionId
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [triggers, total]
+                properties:
+                  triggers:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Trigger'
+                  total:
+                    type: integer
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/traces:
+    get:
+      tags: [traces]
+      operationId: listTrace
+      summary: Worker / Planner 运行轨迹
+      parameters:
+        - name: subjectType
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [worker, planner]
+        - name: subjectId
+          in: query
+          required: true
+          description: worker=taskId；planner=plannerRunId
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [trace, total]
+                properties:
+                  trace:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TraceRow'
+                  total:
+                    type: integer
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/missions/{id}/trace-summaries:
+    parameters:
+      - $ref: '#/components/parameters/MissionId'
+    get:
+      tags: [missions, traces]
+      operationId: getMissionTraceSummaries
+      summary: 同 mission 跨任务先验工作总结（P3-A1）
+      parameters:
+        - name: excludeTaskId
+          in: query
+          required: false
+          description: 排除某个任务（Worker 注入路径排除当前任务）
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [summary]
+                properties:
+                  summary:
+                    $ref: '#/components/schemas/MissionTraceSummary'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/missions/{id}/facts:
+    parameters:
+      - $ref: '#/components/parameters/MissionId'
+    get:
+      tags: [missions]
+      operationId: listMissionFacts
+      summary: 黑板 typed facts（P3-B1 派生读模型；凭据明文）
+      parameters:
+        - name: kind
+          in: query
+          schema: { type: string }
+          description: credential/vuln/host/artifact 等
+        - name: trust
+          in: query
+          schema: { type: string, enum: [observed, inferred] }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 500, default: 200 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MissionFactsResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/missions/{id}/frontier:
+    parameters:
+      - $ref: '#/components/parameters/MissionId'
+    get:
+      tags: [missions]
+      operationId: getMissionFrontier
+      summary: 黑板 frontier（开放意图 + 高信号事实）
+      parameters:
+        - name: factLimit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 30 }
+        - name: intentLimit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 30 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [frontier]
+                properties:
+                  frontier:
+                    $ref: '#/components/schemas/MissionFrontier'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/missions/{id}/recall:
+    parameters:
+      - $ref: '#/components/parameters/MissionId'
+    get:
+      tags: [missions]
+      operationId: recallMissionFacts
+      summary: 黑板事实检索（key/value/summary 子串）
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 200 }
+        - name: kind
+          in: query
+          schema: { type: string }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MissionFactsResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/missions/{id}/board:
+    parameters:
+      - $ref: '#/components/parameters/MissionId'
+    get:
+      tags: [missions]
+      operationId: getMissionBoard
+      summary: 线索板投影（八节）
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [board]
+                properties:
+                  board:
+                    $ref: '#/components/schemas/MissionBoard'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/missions/{id}/replay:
+    parameters:
+      - $ref: '#/components/parameters/MissionId'
+    get:
+      tags: [missions]
+      operationId: replayMission
+      summary: events 回放到任意 seq 并与实时投影比较
+      parameters:
+        - name: toSeq
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [replay]
+                properties:
+                  replay:
+                    $ref: '#/components/schemas/ReplaySnapshot'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/missions/{id}/scope-upgrade:
+    parameters:
+      - $ref: '#/components/parameters/MissionId'
+    post:
+      tags: [approvals]
+      operationId: requestScopeUpgrade
+      summary: 申请 Grant 升级（只创建 pending approval）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScopeUpgradeRequest'
+      responses:
+        '201':
+          description: 已创建审批
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScopeUpgradeApproval'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/metrics:
+    get:
+      tags: [system]
+      operationId: getMetrics
+      summary: 指标看板 v1
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [metrics]
+                properties:
+                  metrics:
+                    $ref: '#/components/schemas/MetricsSummary'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/model-configs:
+    get:
+      tags: [system]
+      operationId: listModelConfigs
+      summary: 模型配置列表（admin token；key 遮罩）
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [configs, total]
+                properties:
+                  configs:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ModelConfig'
+                  total: { type: integer }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+    post:
+      tags: [system]
+      operationId: createModelConfig
+      summary: 新建模型配置（admin token；key 明文落库）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ModelConfigCreate'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [config]
+                properties:
+                  config:
+                    $ref: '#/components/schemas/ModelConfig'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: name 已存在
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/model-configs/audit:
+    get:
+      tags: [system]
+      operationId: listModelConfigAudit
+      summary: 模型配置审计（admin token）
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [audit, total]
+                properties:
+                  audit:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ModelConfigAudit'
+                  total: { type: integer }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/model-configs/test:
+    post:
+      tags: [system]
+      operationId: testModelConfigDraft
+      summary: 测试未保存的模型配置连接（admin）
+      description: |
+        发送一次最小 chat completion 验证 baseUrl / apiKey / modelName。
+        apiKey 不会出现在响应、日志或错误文本中。响应始终为 200，结果在 `ok` 字段。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ModelConfigTestRequest'
+      responses:
+        '200':
+          description: 探测结果（`ok:false` 表示连接失败）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelConfigTestResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/model-configs/{id}/test:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [system]
+      operationId: testModelConfigStored
+      summary: 测试已保存的模型配置（admin），可选字段覆盖
+      description: 默认复用已保存的 baseUrl / apiKey / modelName；传入字段可覆盖。
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ModelConfigTestRequest'
+      responses:
+        '200':
+          description: 探测结果（`ok:false` 表示连接失败）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelConfigTestResult'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: 模型配置不存在
+  /api/model-configs/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [system]
+      operationId: getModelConfig
+      summary: 模型配置详情（admin token；key 遮罩）
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [config]
+                properties:
+                  config:
+                    $ref: '#/components/schemas/ModelConfig'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [system]
+      operationId: updateModelConfig
+      summary: 更新模型配置（admin token；apiKey 空串=不修改）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ModelConfigUpdate'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [config]
+                properties:
+                  config:
+                    $ref: '#/components/schemas/ModelConfig'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: name 已存在
+    patch:
+      tags: [system]
+      operationId: patchModelConfig
+      summary: 部分更新模型配置（同 PUT 语义）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ModelConfigUpdate'
+      responses:
+        '200':
+          description: OK
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [system]
+      operationId: deleteModelConfig
+      summary: 删除模型配置（admin token）
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted: { type: boolean }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/model-configs/{id}/reveal:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [system]
+      operationId: revealModelConfig
+      summary: 查看明文 key（admin token；每次 reveal 审计）
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [config]
+                properties:
+                  config:
+                    $ref: '#/components/schemas/ModelConfigReveal'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/missions/{id}/intel:
+    parameters:
+      - $ref: '#/components/parameters/MissionId'
+    get:
+      tags: [missions]
+      operationId: getMissionIntel
+      summary: 同 mission intel（P3-B3；只读，不跨 mission）
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 200, default: 100 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [intel]
+                properties:
+                  intel:
+                    $ref: '#/components/schemas/MissionIntel'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/missions/{id}/explore-graph:
+    parameters:
+      - $ref: '#/components/parameters/MissionId'
+    get:
+      tags: [missions]
+      operationId: getMissionExploreGraph
+      summary: 探索图读投影 + digest 折叠（P3-A3）
+      parameters:
+        - name: threshold
+          in: query
+          schema: { type: integer, minimum: 10, maximum: 500, default: 150 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [graph]
+                properties:
+                  graph:
+                    $ref: '#/components/schemas/MissionExploreGraph'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/evals:
+    get:
+      tags: [evals]
+      operationId: listEvals
+      summary: eval 历史
+      parameters:
+        - name: kind
+          in: query
+          schema: { type: string, enum: [matrix, fixture, effect, frozen, replay, other] }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [evals, total]
+                properties:
+                  evals: { type: array, items: { $ref: '#/components/schemas/EvalRun' } }
+                  total: { type: integer }
+    post:
+      tags: [evals]
+      operationId: recordEval
+      summary: 记录结构化 eval 摘要（脚本使用）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [kind, name]
+              properties:
+                kind: { type: string, enum: [matrix, fixture, effect, frozen, replay, other] }
+                name: { type: string, minLength: 1, maxLength: 200 }
+                status: { type: string, enum: [completed, failed, partial], default: completed }
+                summary: { type: object, additionalProperties: true }
+                details: { type: object, additionalProperties: true }
+                recordedBy: { type: string, maxLength: 120 }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [eval]
+                properties:
+                  eval: { $ref: '#/components/schemas/EvalRun' }
+  /api/evals/dashboard:
+    get:
+      tags: [evals]
+      operationId: getEvalDashboard
+      summary: eval + 12 指标 + events replay 摘要
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 20, default: 5 }
+        - name: replayLimit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 10, default: 5 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [evals, metrics, replay]
+                properties:
+                  evals: { type: array, items: { $ref: '#/components/schemas/EvalRun' } }
+                  metrics: { type: object, additionalProperties: true }
+                  replay: { type: object, additionalProperties: true }
+                  generatedAt: { type: string, format: date-time }
+  /api/evals/{id}:
+    get:
+      tags: [evals]
+      operationId: getEval
+      summary: eval 详情
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [eval]
+                properties:
+                  eval: { $ref: '#/components/schemas/EvalRun' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/missions/{id}/overview:
+    parameters:
+      - $ref: '#/components/parameters/MissionId'
+    get:
+      tags: [missions]
+      operationId: getMissionOverview
+      summary: 项目概览（M5-1，只读，同 mission）
+      parameters:
+        - name: maxChars
+          in: query
+          schema: { type: integer, minimum: 500, maximum: 50000, default: 8000 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [overview]
+                properties:
+                  overview: { type: object, additionalProperties: true }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/missions/{id}/worker-traces/search:
+    parameters:
+      - $ref: '#/components/parameters/MissionId'
+    get:
+      tags: [missions]
+      operationId: searchMissionWorkerTraces
+      summary: 跨 Worker 轨迹摘要检索（M5-4，同 mission）
+      parameters:
+        - name: q
+          in: query
+          schema: { type: string, maxLength: 200 }
+        - name: excludeTaskId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 20, default: 20 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [search]
+                properties:
+                  search: { type: object, additionalProperties: true }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/missions/{id}/assets/graph:
+    parameters:
+      - $ref: '#/components/parameters/MissionId'
+    get:
+      tags: [missions]
+      operationId: getMissionAssetGraph
+      summary: 项目内资产图 + 覆盖度（M5-5，同 mission）
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [graph]
+                properties:
+                  graph: { type: object, additionalProperties: true }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/missions/{id}/artifacts:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [missions]
+      operationId: listMissionArtifacts
+      summary: 列出 mission 的上传样本元数据
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [artifacts]
+                properties:
+                  artifacts:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MissionArtifact'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [missions]
+      operationId: uploadMissionArtifact
+      summary: 原始字节流上传本地 APK/ELF/SO/DEX/JS 样本（operator/admin）
+      parameters:
+        - name: X-Artifact-Filename
+          in: header
+          required: true
+          schema: { type: string, maxLength: 500 }
+        - name: X-CSRF-Token
+          in: header
+          required: false
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        '201':
+          description: 上传成功
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [artifact]
+                properties:
+                  artifact:
+                    $ref: '#/components/schemas/MissionArtifact'
+        '200':
+          description: 同 mission 同 SHA 已存在
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [artifact]
+                properties:
+                  artifact:
+                    $ref: '#/components/schemas/MissionArtifact'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '413':
+          description: 文件超过 ARTIFACT_MAX_BYTES
+  /api/admin/settings:
+    get:
+      tags: [system]
+      operationId: getRuntimeSettings
+      summary: 运行时参数（含版本号，PATCH 需 expectedVersion 防并发覆盖）
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [settings]
+                properties:
+                  settings:
+                    type: object
+                    additionalProperties: true
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    patch:
+      tags: [system]
+      operationId: updateRuntimeSettings
+      summary: 更新运行时参数（admin；版本冲突返回 409）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                expectedVersion: { type: integer }
+                values:
+                  type: object
+                  additionalProperties: true
+      responses:
+        '200':
+          description: OK
+        '400':
+          description: 校验失败
+        '409':
+          description: settings version changed; reload before saving
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/admin/audit:
+    get:
+      tags: [system]
+      operationId: listAdminAudit
+      summary: 管理审计（admin）
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 500, default: 100 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [audit]
+                properties:
+                  audit:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  total: { type: integer }
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/admin/artifacts/gc:
+    post:
+      tags: [system]
+      operationId: gcMissionArtifacts
+      summary: 清理超过 TTL 的 artifact 文件与元数据（admin）
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                days: { type: number, minimum: 1, maximum: 365 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [cutoff, removedFiles, removedArtifacts]
+                properties:
+                  cutoff: { type: string, format: date-time }
+                  removedFiles: { type: integer }
+                  removedArtifacts: { type: integer }
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/admin/watchdog:
+    get:
+      tags: [system]
+      operationId: getWatchdogDashboard
+      summary: Watchdog 看板聚合（admin，ADR-0039）
+      parameters:
+        - name: days
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 90, default: 7 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+      responses:
+        '200':
+          description: 只读聚合（summary + 最近观测 + 升级 + 停滞 streak）
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [watchdog]
+                properties:
+                  watchdog:
+                    type: object
+                    additionalProperties: true
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: API_AUTH_TOKEN；/api/health 不需要鉴权，SSE 也接受 ?token=。
+  parameters:
+    MissionId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+  responses:
+    BadRequest:
+      description: 参数/JSON 校验失败
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorOrIssues'
+    NotFound:
+      description: 资源不存在
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: 缺少或无效的 Bearer token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: token 有效但缺少 admin 权限（模型配置路由）
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    ServiceUnavailable:
+      description: 数据库/服务不可用
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+    ErrorOrIssues:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+        issues:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+    Health:
+      type: object
+      required: [ok, service, egressMode]
+      properties:
+        ok:
+          type: boolean
+        service:
+          type: string
+        egressMode:
+          type: string
+          enum: [scope, open]
+        error:
+          type: string
+    MissionTarget:
+      type: object
+      additionalProperties: false
+      required: [type, value]
+      properties:
+        type:
+          type: string
+          enum: [url, ip, domain, file]
+        value:
+          type: string
+          minLength: 1
+    ScopeExtras:
+      type: object
+      additionalProperties: false
+      properties:
+        domainSuffixes:
+          type: array
+          items:
+            type: string
+        ips:
+          type: array
+          items:
+            type: string
+        urlPrefixes:
+          type: array
+          items:
+            type: string
+    CreateMissionRequest:
+      type: object
+      additionalProperties: false
+      required: [target, objective]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        target:
+          $ref: '#/components/schemas/MissionTarget'
+        objective:
+          type: string
+          minLength: 1
+          maxLength: 4000
+        maxSteps:
+          type: integer
+          minimum: 0
+          maximum: 3000
+          description: 0 表示不限
+        maxWallClockMs:
+          type: integer
+          minimum: 0
+          maximum: 7200000
+          description: 0 表示不限；默认 1200000（20 分钟）
+        methodology:
+          type: string
+          maxLength: 8000
+        scopeExtras:
+          $ref: '#/components/schemas/ScopeExtras'
+        priority:
+          type: number
+          minimum: 0
+          maximum: 1
+          default: 0.5
+    CreatedMission:
+      type: object
+      required: [missionId, taskId, grantId, scope]
+      properties:
+        missionId:
+          type: string
+          format: uuid
+        taskId:
+          type: string
+          format: uuid
+        grantId:
+          type: string
+          format: uuid
+        scope:
+          type: object
+          additionalProperties: true
+          properties:
+            allowAll:
+              type: boolean
+              description: 纯附件项目的显式 allowAll 网络 scope（仍经 audited proxy）
+        artifacts:
+          type: array
+          items:
+            $ref: '#/components/schemas/MissionArtifact'
+        artifactIds:
+          type: array
+          items: { type: string, format: uuid }
+    MissionListItem:
+      type: object
+      required: [id, name, state, findingsCount, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        state:
+          type: string
+          enum: [pending, running, paused, completed, failed, cancelled]
+        target:
+          oneOf:
+            - $ref: '#/components/schemas/MissionTarget'
+            - type: 'null'
+        objective:
+          type: [string, 'null']
+        workerId:
+          type: [string, 'null']
+        findingsCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: [string, 'null']
+          format: date-time
+    Task:
+      type: object
+      required: [id, state, type, dependsOn, attempt, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        state:
+          type: string
+          enum: [proposed, ready, leased, running, reported, verified, done, retry_wait, exhausted, blocked, cancelled, stale, handed_back]
+        type:
+          type: string
+          description: 任务类型原值，如 bootstrap/intent/explore/reason
+        dependsOn:
+          type: array
+          items:
+            type: string
+            format: uuid
+        attempt:
+          type: integer
+        priority:
+          type: number
+        lastError:
+          type: [string, 'null']
+        plannerRunId:
+          type: [string, 'null']
+          format: uuid
+        createdAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: [string, 'null']
+          format: date-time
+        result:
+          type: [object, 'null']
+          additionalProperties: true
+    Todo:
+      type: object
+      required: [id, content, status, position]
+      properties:
+        id:
+          type: string
+          format: uuid
+        content:
+          type: string
+        status:
+          type: string
+        position:
+          type: integer
+    Trigger:
+      type: object
+      required: [id, source, kind, route, state, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        source:
+          type: string
+        kind:
+          type: string
+        route:
+          type: string
+          enum: [direct, planner]
+        state:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+    Hint:
+      type: object
+      required: [id, content, source, kind, state, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        content:
+          type: string
+        source:
+          type: string
+        kind:
+          type: string
+          enum: [guidance, help, report]
+        state:
+          type: string
+          enum: [pending, delivered, consumed]
+        createdAt:
+          type: string
+          format: date-time
+        deliveredAt:
+          type: [string, 'null']
+          format: date-time
+    Approval:
+      type: object
+      required: [id, missionId, type, status, payload, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        missionId:
+          type: string
+          format: uuid
+        missionName:
+          type: string
+        type:
+          type: string
+        status:
+          type: string
+          enum: [pending, approved, rejected]
+        payload:
+          type: object
+          additionalProperties: true
+        decidedBy:
+          type: [string, 'null']
+        decidedAt:
+          type: [string, 'null']
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+    PlannerRun:
+      type: object
+      required: [id, state, actionCount, signalCount, startedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        state:
+          type: string
+        actionCount:
+          type: integer
+        reason:
+          type: [string, 'null']
+        signalCount:
+          type: integer
+        startedAt:
+          type: string
+          format: date-time
+        finishedAt:
+          type: [string, 'null']
+          format: date-time
+    MissionDetail:
+      allOf:
+        - $ref: '#/components/schemas/MissionListItem'
+        - type: object
+          required: [tasks, todo, triggers, hints, approvals, plannerRuns]
+          properties:
+            failureClass:
+              type: [string, 'null']
+            checkpoint:
+              type: object
+              additionalProperties: true
+            pausedAt:
+              type: [string, 'null']
+              format: date-time
+            tasks:
+              type: array
+              items:
+                $ref: '#/components/schemas/Task'
+            todo:
+              type: array
+              items:
+                $ref: '#/components/schemas/Todo'
+            triggers:
+              type: array
+              items:
+                $ref: '#/components/schemas/Trigger'
+            hints:
+              type: array
+              items:
+                $ref: '#/components/schemas/Hint'
+            approvals:
+              type: array
+              items:
+                $ref: '#/components/schemas/Approval'
+            plannerRuns:
+              type: array
+              items:
+                $ref: '#/components/schemas/PlannerRun'
+    MissionControlResult:
+      type: object
+      required: [missionId, state, pausedAt, checkpoint]
+      properties:
+        missionId:
+          type: string
+          format: uuid
+        state:
+          type: string
+        pausedAt:
+          type: [string, 'null']
+          format: date-time
+        checkpoint:
+          type: object
+          additionalProperties: true
+    FindingListItem:
+      type: object
+      required: [id, missionId, missionName, title, category, severity, status, evidenceCount, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        missionId:
+          type: string
+          format: uuid
+        missionName:
+          type: string
+        title:
+          type: string
+        category:
+          type: string
+        severity:
+          type: string
+          enum: [critical, high, medium, low, info]
+        status:
+          type: string
+          enum: [accepted, needs_review, rejected]
+        artifact:
+          type: [string, 'null']
+        evidenceCount:
+          type: integer
+        confidence:
+          type: string
+          enum: [observed, inferred, unverified]
+        mergedCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+    Evidence:
+      type: object
+      required: [id, trafficRef, kind, method, url, requestText, responseText, requestSha256, responseSha256, requestBytes, responseBytes, untrusted, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        trafficRef:
+          type: string
+        kind:
+          type: string
+          enum: [target, internet]
+        method:
+          type: string
+        url:
+          type: string
+        requestText:
+          type: string
+          description: 原始 HTTP 请求包，必含 Host 头
+        responseText:
+          type: string
+        requestSha256:
+          type: string
+        responseSha256:
+          type: string
+        requestBytes:
+          type: integer
+        responseBytes:
+          type: integer
+        untrusted:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+    FindingDetail:
+      allOf:
+        - $ref: '#/components/schemas/FindingListItem'
+        - type: object
+          required: [reportMd, curatorReasons, evidence]
+          properties:
+            reportMd:
+              type: string
+            curatorReasons:
+              type: array
+              items:
+                type: string
+            evidence:
+              type: array
+              items:
+                $ref: '#/components/schemas/Evidence'
+    TraceRow:
+      type: object
+      required: [id, seq, eventType, payload, createdAt]
+      properties:
+        id:
+          type: integer
+        seq:
+          type: integer
+        eventType:
+          type: string
+          enum: [thinking, text, tool_call, tool_result, context, status, session, final, assistant_message, user/message, developer/message, system/message]
+        payload:
+          type: object
+          additionalProperties: true
+        createdAt:
+          type: string
+          format: date-time
+    MissionBoard:
+      type: object
+      additionalProperties: true
+      required: [missionId, version, baseVersion, conflicts, sections, generatedAt]
+      properties:
+        missionId:
+          type: string
+          format: uuid
+        version:
+          type: integer
+        baseVersion:
+          type: integer
+        conflicts:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        sections:
+          type: object
+          additionalProperties: true
+        generatedAt:
+          type: string
+          format: date-time
+    ReplaySnapshot:
+      type: object
+      additionalProperties: true
+      required: [missionId, toSeq, state, grantVersion, tasks, matchesCurrent, diffs, current]
+      properties:
+        missionId:
+          type: string
+          format: uuid
+        toSeq:
+          type: integer
+        state:
+          type: string
+        grantVersion:
+          type: integer
+        tasks:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        matchesCurrent:
+          type: boolean
+        diffs:
+          type: array
+          items:
+            type: string
+        current:
+          type: object
+          additionalProperties: true
+    ScopeUpgradeRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        url:
+          type: string
+        domainSuffixes:
+          type: array
+          items:
+            type: string
+        ips:
+          type: array
+          items:
+            type: string
+        urlPrefixes:
+          type: array
+          items:
+            type: string
+        reason:
+          type: string
+          maxLength: 1000
+      description: url 或 domainSuffixes/ips/urlPrefixes 至少提供一个
+    ScopeUpgradeApproval:
+      type: object
+      additionalProperties: true
+      required: [approvalId, missionId, scopeExtras]
+      properties:
+        approvalId:
+          type: string
+          format: uuid
+        missionId:
+          type: string
+          format: uuid
+        matchedMissionId:
+          type: string
+          format: uuid
+        scopeExtras:
+          type: object
+          additionalProperties: true
+        coverageGate:
+          type: object
+          additionalProperties: false
+          properties:
+            enabled: { type: boolean }
+            minRatio: { type: number, minimum: 0, maximum: 1 }
+            requireAcceptedFinding: { type: boolean }
+    MetricsSummary:
+      type: object
+      additionalProperties: true
+      required: [generatedAt, missions, findings, rates, timing, tasks, evidence, cost, indicators]
+      properties:
+        generatedAt:
+          type: string
+          format: date-time
+        missions:
+          type: object
+          additionalProperties: true
+        findings:
+          type: object
+          additionalProperties: true
+        rates:
+          type: object
+          additionalProperties: true
+          description: 旧 v1 比率（分母为空时为 0）+ P3-A2 可空比率（falsePositiveRate/taskSuccessRate/taskRetryRate/handbackRate/evidenceDepth）。
+        timing:
+          type: object
+          additionalProperties: true
+        tasks:
+          type: object
+          additionalProperties: true
+          description: total/running/stale/stuck + done/failed/exhausted/handedBack/attempted/retried。
+        evidence:
+          type: object
+          additionalProperties: true
+        cost:
+          type: object
+          additionalProperties: true
+          description: totalTokens（Harness 累计 token 用量，成本代理非账单）与 tokensPerValidatedFinding（可为 null）。
+        indicators:
+          type: array
+          description: 固定 12 项、顺序稳定；前端直接遍历渲染。
+          items:
+            $ref: '#/components/schemas/MetricValue'
+    MetricValue:
+      type: object
+      additionalProperties: false
+      required: [id, group, label, unit, definition, value, numerator, denominator]
+      properties:
+        id:
+          type: string
+          enum:
+            - validated_findings
+            - validation_rate
+            - review_rate
+            - false_positive_rate
+            - duplicate_intent_rate
+            - evidence_depth
+            - time_to_first_fact_seconds
+            - stuck_rate
+            - task_success_rate
+            - task_retry_rate
+            - handback_rate
+            - tokens_per_validated_finding
+        group:
+          type: string
+          enum: [quality, efficiency, safety, control]
+        label:
+          type: string
+          description: 中文短名
+        unit:
+          type: string
+          enum: [count, ratio, seconds, tokens]
+        definition:
+          type: string
+          description: 口径说明
+        value:
+          type: [number, 'null']
+          description: null 表示 N/A（分母为空）；UI 必须显示 N/A 而不是 0。
+        numerator:
+          type: [number, 'null']
+        denominator:
+          type: [number, 'null']
+    TraceSummaryTokenUsage:
+      type: object
+      additionalProperties: false
+      required: [input, output, total]
+      properties:
+        input:
+          type: integer
+        output:
+          type: integer
+        total:
+          type: integer
+          description: Harness 累计 token 用量（缺失时按 input+output 计）。
+    TraceSummaryTask:
+      type: object
+      additionalProperties: false
+      required:
+        - taskId
+        - type
+        - state
+        - attempt
+        - steps
+        - tokens
+        - findings
+        - acceptedFindings
+        - evidence
+        - toolCalls
+        - traceEvents
+        - toolCounts
+        - skillsLoaded
+        - startedAt
+        - completedAt
+        - firstTraceAt
+        - lastTraceAt
+        - finalText
+        - lastError
+      properties:
+        taskId:
+          type: string
+          format: uuid
+        type:
+          type: string
+        state:
+          type: string
+        attempt:
+          type: integer
+        steps:
+          type: integer
+        tokens:
+          $ref: '#/components/schemas/TraceSummaryTokenUsage'
+        findings:
+          type: integer
+        acceptedFindings:
+          type: integer
+        evidence:
+          type: integer
+        toolCalls:
+          type: integer
+        traceEvents:
+          type: integer
+        toolCounts:
+          type: object
+          additionalProperties:
+            type: integer
+        skillsLoaded:
+          type: array
+          items:
+            type: string
+        startedAt:
+          type: [string, 'null']
+          format: date-time
+        completedAt:
+          type: [string, 'null']
+          format: date-time
+        firstTraceAt:
+          type: [string, 'null']
+          format: date-time
+        lastTraceAt:
+          type: [string, 'null']
+          format: date-time
+        finalText:
+          type: [string, 'null']
+          description: 截断后的 worker 总结（≤200 字符），可能引用目标内容，展示为不可信数据。
+        lastError:
+          type: [string, 'null']
+          description: 截断后的失败原因（≤160 字符）。
+    MissionTraceSummary:
+      type: object
+      additionalProperties: false
+      required: [missionId, missionName, generatedAt, totals, tasks, digest]
+      properties:
+        missionId:
+          type: string
+          format: uuid
+        missionName:
+          type: string
+        generatedAt:
+          type: string
+          format: date-time
+        totals:
+          type: object
+          additionalProperties: true
+          description: 聚合统计（tasks/done/failed/running/steps/tokens/findings/acceptedFindings/evidence/toolCalls/toolCounts/skillsLoaded）。
+        tasks:
+          type: array
+          items:
+            $ref: '#/components/schemas/TraceSummaryTask'
+        digest:
+          type: string
+          description: Worker 实际注入的有界摘要（默认 ≤1500 字符）；空字符串=没有可注入的先验工作。
+
+    MissionFact:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - missionId
+        - source
+        - sourceId
+        - kind
+        - key
+        - value
+        - summary
+        - provenance
+        - trust
+        - sensitive
+        - taskId
+        - createdAt
+      properties:
+        id: { type: string }
+        missionId: { type: string, format: uuid }
+        source: { type: string, enum: [asset, finding, finding_artifact, evidence] }
+        sourceId: { type: string }
+        kind: { type: string }
+        key: { type: string }
+        value:
+          type: string
+          description: 明文值；credential 类为敏感凭据（ADR-0010），前端默认遮罩。
+        summary: { type: string }
+        provenance: { type: string }
+        trust: { type: string, enum: [observed, inferred] }
+        sensitive: { type: boolean }
+        taskId:
+          type: [string, 'null']
+          format: uuid
+        createdAt: { type: string, format: date-time }
+    MissionFactIntent:
+      type: object
+      additionalProperties: false
+      required: [id, missionId, type, state, objective, priority, dependsOn, attempt, createdAt]
+      properties:
+        id: { type: string }
+        missionId: { type: string, format: uuid }
+        type: { type: string }
+        state: { type: string }
+        objective: { type: string }
+        priority: { type: number }
+        dependsOn:
+          type: array
+          items: { type: string }
+        attempt: { type: integer }
+        createdAt: { type: string, format: date-time }
+    MissionFactsResult:
+      type: object
+      additionalProperties: false
+      required: [missionId, facts, total]
+      properties:
+        missionId: { type: string, format: uuid }
+        facts:
+          type: array
+          items:
+            $ref: '#/components/schemas/MissionFact'
+        total: { type: integer }
+    MissionFrontier:
+      type: object
+      additionalProperties: false
+      required: [missionId, version, generatedAt, intents, facts, counts]
+      properties:
+        missionId: { type: string, format: uuid }
+        version: { type: integer, description: 与 mission events max(seq) 对齐 }
+        generatedAt: { type: string, format: date-time }
+        intents:
+          type: array
+          items:
+            $ref: '#/components/schemas/MissionFactIntent'
+        facts:
+          type: array
+          items:
+            $ref: '#/components/schemas/MissionFact'
+        counts:
+          type: object
+          additionalProperties: true
+          description: facts/intents/sensitiveFacts + byKind
+
+    ModelConfig:
+      type: object
+      additionalProperties: true
+      required:
+        - id
+        - name
+        - baseUrl
+        - modelName
+        - apiKeySet
+        - apiKeyMasked
+        - enabled
+        - isDefault
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        baseUrl: { type: string }
+        modelName: { type: string }
+        apiKeyEnv: { type: string }
+        contextWindow: { type: integer }
+        maxOutputTokens: { type: integer }
+        reasoningEffort:
+          type: [string, 'null']
+          enum: [low, high, max, null]
+        compat: { type: object, additionalProperties: true }
+        role:
+          type: [string, 'null']
+          enum: [worker, planner, scout, executor, specialist, guard, null]
+        tier:
+          type: [string, 'null']
+          enum: [default, fast, strong, null]
+        enabled: { type: boolean }
+        isDefault: { type: boolean }
+        apiKeySet: { type: boolean }
+        apiKeyMasked: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    ModelConfigCreate:
+      type: object
+      additionalProperties: false
+      required: [name, baseUrl, apiKey, modelName]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 120 }
+        baseUrl: { type: string }
+        apiKey: { type: string, minLength: 1 }
+        modelName: { type: string }
+        apiKeyEnv: { type: string }
+        contextWindow: { type: integer }
+        maxOutputTokens: { type: integer }
+        reasoningEffort: { type: string, enum: [low, high, max] }
+        compat: { type: object, additionalProperties: true }
+        role: { type: string, enum: [worker, planner, scout, executor, specialist, guard] }
+        tier: { type: string, enum: [default, fast, strong] }
+        enabled: { type: boolean }
+        isDefault: { type: boolean }
+    ModelConfigUpdate:
+      type: object
+      additionalProperties: false
+      properties:
+        name: { type: string }
+        baseUrl: { type: string }
+        apiKey: { type: string, description: 空串=不修改 }
+        modelName: { type: string }
+        apiKeyEnv: { type: string }
+        contextWindow: { type: integer }
+        maxOutputTokens: { type: integer }
+        reasoningEffort: { type: string, enum: [low, high, max] }
+        compat: { type: object, additionalProperties: true }
+        role: { type: string, enum: [worker, planner, scout, executor, specialist, guard] }
+        tier: { type: string, enum: [default, fast, strong] }
+        enabled: { type: boolean }
+        isDefault: { type: boolean }
+    ModelConfigReveal:
+      type: object
+      additionalProperties: false
+      required: [id, name, apiKey, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        apiKey: { type: string, description: 明文 key；仅 admin reveal 返回 }
+        updatedAt: { type: string, format: date-time }
+    ModelConfigAudit:
+      type: object
+      additionalProperties: false
+      required: [id, configId, configName, actor, action, detail, createdAt]
+      properties:
+        id: { type: integer }
+        configId:
+          type: [string, 'null']
+          format: uuid
+        configName: { type: string }
+        actor: { type: string }
+        action: { type: string, enum: [create, update, delete, reveal] }
+        detail: { type: object, additionalProperties: true }
+        createdAt: { type: string, format: date-time }
+
+    MissionIntelItem:
+      type: object
+      additionalProperties: false
+      required: [id, type, title, detail, tags, trust, sensitive, sourceFindingId, sourceTaskId, createdAt]
+      properties:
+        id: { type: string }
+        type: { type: string, enum: [technique, credential, artifact] }
+        title: { type: string }
+        detail: { type: string }
+        tags:
+          type: array
+          items: { type: string }
+        trust: { type: string }
+        sensitive: { type: boolean }
+        sourceFindingId:
+          type: [string, 'null']
+          format: uuid
+        sourceTaskId:
+          type: [string, 'null']
+          format: uuid
+        createdAt: { type: string, format: date-time }
+    MissionIntel:
+      type: object
+      additionalProperties: false
+      required: [missionId, generatedAt, items, total]
+      properties:
+        missionId: { type: string, format: uuid }
+        generatedAt: { type: string, format: date-time }
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/MissionIntelItem'
+        total: { type: integer }
+    ExploreGraphNode:
+      type: object
+      additionalProperties: true
+      required: [id, type, kind, label]
+      properties:
+        id: { type: string }
+        type: { type: string, enum: [mission, task, fact] }
+        kind: { type: string }
+        label: { type: string }
+        state: { type: string }
+        angle:
+          type: [string, 'null']
+          enum: [web, api, infra, binary, null]
+        sensitive: { type: boolean }
+        trust: { type: string }
+        memberIds:
+          type: array
+          items: { type: string }
+    ExploreGraphEdge:
+      type: object
+      additionalProperties: false
+      required: [id, source, target, type]
+      properties:
+        id: { type: string }
+        source: { type: string }
+        target: { type: string }
+        type: { type: string, enum: [contains, produced, observes, evidence_of] }
+        label: { type: string }
+    ExploreGraphGroup:
+      type: object
+      additionalProperties: false
+      required: [id, type, kind, label, memberIds]
+      properties:
+        id: { type: string }
+        type: { type: string }
+        kind: { type: string }
+        label: { type: string }
+        memberIds:
+          type: array
+          items: { type: string }
+    MissionExploreGraph:
+      type: object
+      additionalProperties: false
+      required: [missionId, version, generatedAt, threshold, folded, original, nodes, edges]
+      properties:
+        missionId: { type: string, format: uuid }
+        version: { type: integer }
+        generatedAt: { type: string, format: date-time }
+        threshold: { type: integer }
+        folded: { type: boolean }
+        original:
+          type: object
+          additionalProperties: false
+          required: [nodes, edges]
+          properties:
+            nodes: { type: integer }
+            edges: { type: integer }
+        nodes:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExploreGraphNode'
+        edges:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExploreGraphEdge'
+        groups:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExploreGraphGroup'
+
+    MissionArtifact:
+      type: object
+      additionalProperties: false
+      required: [id, missionId, taskId, sha256, size, filename, contentType, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        missionId: { type: string, format: uuid }
+        taskId: { type: [string, 'null'], format: uuid }
+        sha256: { type: string, pattern: '^[0-9a-f]{64}$' }
+        size: { type: integer, minimum: 0 }
+        filename: { type: string }
+        contentType: { type: string }
+        createdAt: { type: string, format: date-time }
+
+    ModelConfigTestRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: 已保存的配置 id；省略 apiKey 时复用它保存的 key
+        baseUrl: { type: string }
+        apiKey: { type: string }
+        modelName: { type: string }
+        maxOutputTokens: { type: integer, minimum: 1 }
+    ModelConfigTestResult:
+      type: object
+      additionalProperties: false
+      required: [ok, latencyMs, httpStatus, model, reply, usage, error, errorCode, traceId]
+      properties:
+        ok: { type: boolean }
+        latencyMs: { type: integer }
+        httpStatus: { type: [integer, 'null'] }
+        model: { type: [string, 'null'] }
+        reply: { type: [string, 'null'] }
+        usage: { type: [object, 'null'], additionalProperties: true }
+        error: { type: [string, 'null'] }
+        errorCode: { type: [string, 'null'] }
+        traceId: { type: [string, 'null'] }
+    EvalRun:
+      type: object
+      additionalProperties: true
+      required: [id, kind, name, status, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        kind: { type: string, enum: [matrix, fixture, effect, frozen, replay, other] }
+        name: { type: string }
+        status: { type: string, enum: [completed, failed, partial] }
+        summary: { type: object, additionalProperties: true }
+        details: { type: [object, 'null'], additionalProperties: true }
+        recordedBy: { type: [string, 'null'] }
+        createdAt: { type: string, format: date-time }

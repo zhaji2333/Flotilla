@@ -1,0 +1,27 @@
+# syntax=docker/dockerfile:1
+# Self-contained IDA variant of the reverse service.
+# Build contexts ida_home/ida_venv are exported from the host's licensed IDA
+# volumes by scripts/build-reverse-ida-image.sh. The license and EULA registry
+# are small BuildKit secrets. The final image has no host/volume runtime
+# dependency; keep it private.
+FROM agent_research-reverse:latest
+
+USER root
+COPY --from=ida_home / /opt/ida-pro-9.5
+COPY --from=ida_venv / /opt/ida-venv
+RUN --mount=type=secret,id=ida_license,required=true \
+    --mount=type=secret,id=ida_reg,required=true \
+    set -eu; \
+    mkdir -p /opt/ida-license /home/reverse/.idapro; \
+    cp /run/secrets/ida_license /opt/ida-license/idapro.hexlic; \
+    mkdir -p /opt/ida-license; cp /run/secrets/ida_reg /opt/ida-license/ida.reg; \
+    chmod 600 /opt/ida-license/idapro.hexlic; \
+    chown -R reverse:artifacts /opt/ida-pro-9.5 /opt/ida-venv /opt/ida-license
+
+ENV IDA_PYTHON=/opt/ida-venv/bin/python \
+    IDADIR=/opt/ida-pro-9.5 \
+    IDA_LICENSE=/opt/ida-license/idapro.hexlic \
+    PYTHONPATH=/opt/ida-venv/lib/python3.11/site-packages:/opt/ida-pro-9.5/idalib/python \
+    IDA_HOME_DIR=/tmp/ida-home \
+    HOME=/tmp/ida-home
+USER reverse

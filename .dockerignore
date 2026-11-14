@@ -1,0 +1,36 @@
+# Reference checkouts (not product source)
+ARTEX-0.3.15/
+Cairn-main/
+CkSKILLS_v2/
+agent-skills/
+deepseek-harness-master/
+dsh-superagent-prototype-main/
+pi-main/
+
+# Dependencies and build output
+node_modules/
+**/node_modules/
+dist/
+build/
+.next/
+coverage/
+*.tsbuildinfo
+
+# VCS and local state
+.git/
+.workbuddy/
+.DS_Store
+.env
+.env.*
+
+# Runtime data
+data/
+logs/
+tmp/
+artifacts/
+evidence/
+docs/
+tasks/
+scripts/
+tests/
+proxy/

@@ -1,0 +1,39 @@
+{
+  "name": "@src-agent/harness-plugin",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "DeepSeek Harness bundle for SRC-Agent: target tools, scope guard and evidence recording",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "tsc --noEmit && pnpm run build:bundle",
+    "build:bundle": "esbuild src/index.ts --bundle --format=esm --platform=node --target=node24 --outfile=dist/index.js --external:@deepseek-ai/* --external:undici",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "lint": "oxlint src/"
+  },
+  "dependencies": {
+    "@deepseek-ai/cordis": "4.1.0",
+    "@deepseek-ai/dsh": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-llm": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-tools": "0.2.2-rc.1",
+    "@src-agent/contracts": "workspace:*",
+    "@src-agent/curator": "workspace:*",
+    "@src-agent/tool-gateway": "workspace:*",
+    "undici": "^8.12.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "esbuild": "^0.28.0",
+    "tsx": "^4.23.15",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  }
+}

@@ -1,0 +1,102 @@
+{
+  "version": 1,
+  "source": "CkSKILLS_v2/.agents/skills (adapted, user-owned skill library)",
+  "skills": [
+    {
+      "name": "ai-agent",
+      "description": "AI/LLM/Agent 安全专项。当目标是 Chatbot/RAG/AI 助手、AI 应用平台、在线代码执行沙箱、云端 Agent 沙箱/工具执行/网关时调用。",
+      "path": "skills/ai-agent/SKILL.md",
+      "invocation": "on-demand"
+    },
+    {
+      "name": "binary-re",
+      "description": "二进制/固件/ELF/PE/内存破坏逆向专项。当目标是 PE/ELF/SO/固件可执行文件、Windows 服务、TCP 二进制服务、需要逆向协议或挖内存破坏漏洞时调用。",
+      "path": "skills/binary-re/SKILL.md",
+      "invocation": "on-demand"
+    },
+    {
+      "name": "ck-router",
+      "description": "安全测试/漏洞挖掘总入口与路由技能。凡涉及授权渗透测试、SRC、红队评估、漏洞挖掘、代码审计、二进制/移动/云/AI 安全评估任务，或需要战法索引、首枪选择、失败换层、线索板、报告规范时先调用本技能。",
+      "path": "skills/ck-router/SKILL.md",
+      "invocation": "router"
+    },
+    {
+      "name": "cloud-infra",
+      "description": "云/容器/中间件/运维面板/供应链专项。当涉及云资产、对象存储、云元数据、K8s、服务器面板、中间件、CI-CD、依赖供应链或配置泄露时调用。",
+      "path": "skills/cloud-infra/SKILL.md",
+      "invocation": "on-demand"
+    },
+    {
+      "name": "mobile-app",
+      "description": "Android/APK/小程序/移动端逆向与组件安全专项。当目标是 APK/预装应用/厂商应用/小程序，需要脱壳、逆向、组件漏洞、密钥追踪或未授权接口时调用。",
+      "path": "skills/mobile-app/SKILL.md",
+      "invocation": "on-demand"
+    },
+    {
+      "name": "source-audit",
+      "description": "白盒代码审计与反编译产物审计专项。当拿到源码/反编译产物/代码片段，需要从输入点追到危险函数、或做鉴权/逻辑审计时调用。",
+      "path": "skills/source-audit/SKILL.md",
+      "invocation": "on-demand"
+    },
+    {
+      "name": "web-api-protocol",
+      "description": "REST/GraphQL/gRPC/WebSocket/网关/HTTP 走私/缓存/请求头专项。当出现 Swagger/开放 API、GraphQL、WebSocket、反向代理/网关、缓存、调试端点时调用。",
+      "path": "skills/web-api-protocol/SKILL.md",
+      "invocation": "on-demand"
+    },
+    {
+      "name": "web-auth-access",
+      "description": "认证/会话/JWT/验证码/越权(IDOR)/前端权限绕过专项。当出现注册登录、找回密码、验证码、OAuth、JWT、2FA、角色参数、id 可替换、路由守卫时调用。",
+      "path": "skills/web-auth-access/SKILL.md",
+      "invocation": "on-demand"
+    },
+    {
+      "name": "web-deser-xxe",
+      "description": "反序列化/XXE/原型污染/JNDI/XSLT/EL/沙箱脚本注入专项。当出现 XML/SOAP/序列化对象/JSON 深合并/yaml.load/不可信反序列化入口时调用。",
+      "path": "skills/web-deser-xxe/SKILL.md",
+      "invocation": "on-demand"
+    },
+    {
+      "name": "web-file-path",
+      "description": "文件上传/下载/导入导出/预览/路径穿越/任意读写/处理引擎专项。当出现头像附件上传、报表导出、文档导入、PDF/Office/图片预览、压缩包、在线解压时调用。",
+      "path": "skills/web-file-path/SKILL.md",
+      "invocation": "on-demand"
+    },
+    {
+      "name": "web-injection",
+      "description": "SQL/NoSQL/命令/SSTI/表达式注入与参数 fuzz 专项。当参数拼接查询、排序筛选、JSON 查询可控、模板渲染、命令执行点、搜索/导出/自动补全接口出现时调用。",
+      "path": "skills/web-injection/SKILL.md",
+      "invocation": "on-demand"
+    },
+    {
+      "name": "web-logic-race",
+      "description": "业务逻辑与并发竞态专项。当出现支付/下单/退款/提现/优惠券/积分/库存/审批/会员/抽奖/邀请等业务功能，或状态可跳变、金额参数可控、可重放时调用。",
+      "path": "skills/web-logic-race/SKILL.md",
+      "invocation": "on-demand"
+    },
+    {
+      "name": "web-recon",
+      "description": "资产/JS/接口发现与未授权路径、密钥还原专项。当开始新目标、找不到接口、需要从 JS 提取 API/密钥/隐藏功能、或需要零身份找路径与密钥时调用。",
+      "path": "skills/web-recon/SKILL.md",
+      "invocation": "on-demand"
+    },
+    {
+      "name": "web-ssrf-render",
+      "description": "SSRF/内网探测/云元数据/服务端无头浏览器渲染专项。当出现 URL 可控的抓取、代理、回调、webhook、图片/文档预览、网页截图、HTML→PDF、链接预览时调用。",
+      "path": "skills/web-ssrf-render/SKILL.md",
+      "invocation": "on-demand"
+    },
+    {
+      "name": "web-waf-bypass",
+      "description": "WAF/过滤/检测绕过与失败升级专项。当 payload 被 403/拦截、需要多编码/变形/协议层绕过、或需要构造规避检测的制品时调用。",
+      "path": "skills/web-waf-bypass/SKILL.md",
+      "invocation": "on-demand"
+    },
+    {
+      "name": "web-xss-frontend",
+      "description": "XSS（反射/存储/DOM/跳转型）/CSRF/Clickjacking/Markdown 渲染专项。当出现评论昵称富文本、搜索回显、跳转页、postMessage、前端 DOM 操作、AI 输出渲染时调用。",
+      "path": "skills/web-xss-frontend/SKILL.md",
+      "invocation": "on-demand"
+    }
+  ]
+}

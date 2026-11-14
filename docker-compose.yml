@@ -1,0 +1,600 @@
+# SRC-Agent — PostgreSQL + controlled egress proxy + dispatcher/executor/worker
+# fleet + standalone API/SPA + browser/reverse/watchdog capability services.
+# The planner and eval fixture are opt-in profiles.
+#
+# The mission (target, objective, success criteria) lives in PostgreSQL, not in
+# this file. `docker compose up` starts the control plane; the worker claims
+# pending tasks, the proxy authorizes egress against active mission grants.
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: srcagent
+      POSTGRES_USER: srcagent
+      POSTGRES_PASSWORD: srcagent_dev
+      TZ: ${TZ:-Asia/Shanghai}
+    ports:
+      - "127.0.0.1:5432:5432"
+    networks: [backend, edge]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./packages/contracts/src/db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U srcagent -d srcagent"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  proxy:
+    build: ./proxy
+    environment:
+      PROXY_PORT: "8080"
+      # Target scope is loaded from the grants of active missions in PostgreSQL,
+      # so a mission created through the Web API is authorized at the network
+      # boundary without editing deployment configuration.
+      SCOPE_SOURCE: "db"
+      TZ: ${TZ:-Asia/Shanghai}
+      SCOPE_REFRESH_SECONDS: "2"
+      # Internet retrieval (model API + web.fetch) is a separate risk class:
+      # explicit allowlist, public IPs only, audited.
+      INTERNET_ALLOWLIST: ${INTERNET_ALLOWLIST:-api.deepseek.com,example.com}
+      EGRESS_MODE: ${EGRESS_MODE:-scope}
+      POLICY_RATE_LIMIT_PER_MIN: ${POLICY_RATE_LIMIT_PER_MIN:-120}
+      # Bound each redirect hop's upstream response-header wait (A5 hardening).
+      PROXY_RESPONSE_HEADER_TIMEOUT_MS: ${PROXY_RESPONSE_HEADER_TIMEOUT_MS:-60000}
+      # Opt-in local-lab transport mapping; does not change Host/audit identity.
+      PROXY_CONNECT_OVERRIDES: ${PROXY_CONNECT_OVERRIDES:-}
+      PG_HOST: postgres
+      PG_PORT: "5432"
+      PG_DB: srcagent
+      PG_USER: srcagent
+      PG_PASSWORD: srcagent_dev
+      CA_CERT_PATH: /certs/ca.pem
+      CA_KEY_PATH: /certs/ca-key.pem
+    ports:
+      - "127.0.0.1:8080:8080"
+    networks: [backend, edge, execnet]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - proxycerts:/certs
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  worker:
+    # Deployment target is x86_64 Linux. Keep the build/run platform explicit so
+    # an ARM host cannot silently produce an incompatible worker image.
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: packages/orchestrator/Dockerfile
+      args:
+        APT_MIRROR: ${APT_MIRROR:-deb.debian.org}
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
+        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmmirror.com}
+    command: ["./scripts/worker-entrypoint.sh", "node_modules/.bin/tsx", "src/worker/main.ts"]
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      NODE_EXTRA_CA_CERTS: /etc/ssl/certs/ca-certificates.crt
+      SSL_CERT_FILE: /etc/ssl/certs/ca-certificates.crt
+      # Dispatcher-only controller: no PG_* / database host reaches this process.
+      DISPATCHER_URL: ${DISPATCHER_URL:-http://dispatcher:9300}
+      DISPATCHER_TOKEN: ${DISPATCHER_TOKEN:-dev-dispatcher-token}
+      DISPATCHER_TIMEOUT_MS: ${DISPATCHER_TIMEOUT_MS:-120000}
+      WORKER_ID: ${WORKER_ID:-}
+      WORKER_POLL_INTERVAL_MS: "3000"
+      WORKER_TRANSIENT_TRIES: ${WORKER_TRANSIENT_TRIES:-3}
+      WORKER_RETRY_BASE_MS: ${WORKER_RETRY_BASE_MS:-15000}
+      # Agent execution remains in the independent executor; this process only
+      # writes bounded controller state through the dispatcher.
+      SRC_AGENT_EXECUTOR_URL: ${EXECUTOR_URL:-http://executor:9100}
+      SRC_AGENT_EXECUTOR_TOKEN: ${EXECUTOR_TOKEN:-dev-executor-token}
+      SRC_AGENT_RUN_DIR: /runs
+      # Prior-work / mission-context switches (the content is built by dispatcher).
+      PRIOR_WORK_ENABLED: ${PRIOR_WORK_ENABLED:-1}
+      PRIOR_WORK_MAX_CHARS: ${PRIOR_WORK_MAX_CHARS:-1500}
+      PRIOR_WORK_TASK_LIMIT: ${PRIOR_WORK_TASK_LIMIT:-6}
+      MISSION_CONTEXT_ENABLED: ${MISSION_CONTEXT_ENABLED:-1}
+      MISSION_CONTEXT_MAX_BYTES: ${MISSION_CONTEXT_MAX_BYTES:-524288}
+      MISSION_BRIEF_MAX_CHARS: ${MISSION_BRIEF_MAX_CHARS:-2500}
+      # Only the model-proxy endpoint/token is visible here; provider keys stay
+      # in the API process.
+      MODEL_PROXY_URL: ${MODEL_PROXY_URL:-http://api:3001/internal/model}
+      MODEL_PROXY_TOKEN_ENV: ${MODEL_PROXY_TOKEN_ENV:-MODEL_PROXY_TOKEN}
+      WORKER_DEFAULT_MODEL: ${LLM_MODEL:-deepseek-flash}
+      WATCHDOG_ENABLED: ${WATCHDOG_ENABLED:-1}
+      NARB_DISABLE_NATIVE_CACHE: "1"
+    depends_on:
+      dispatcher:
+        condition: service_healthy
+    networks: [ctl, execnet]
+    volumes:
+      - src_agent_runs:/runs
+    read_only: true
+    tmpfs:
+      - /tmp:size=512m,mode=1777
+      - /home/worker:size=64m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 3g
+    cpus: 2
+    restart: "no"
+    deploy:
+      replicas: ${WORKER_REPLICAS:-3}
+
+  artifact-init:
+    image: node:24-bookworm-slim
+    command: ["sh", "-c", "mkdir -p /artifacts && chown -R 10003:10003 /artifacts && chmod -R 0775 /artifacts && chmod 2775 /artifacts"]
+    volumes:
+      - src_agent_artifacts:/artifacts
+    networks: [execnet]
+    restart: "no"
+
+  browser:
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: services/browser/Dockerfile
+      args:
+        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmmirror.com}
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      BROWSER_HOST: 0.0.0.0
+      BROWSER_PORT: "9401"
+      BROWSER_TOKEN: ${BROWSER_SERVICE_TOKEN:-dev-browser-token}
+      BROWSER_ARTIFACTS_DIR: /artifacts
+      BROWSER_PROXY_URL: http://proxy:8080
+      BROWSER_MAX_CONTEXTS: ${BROWSER_MAX_CONTEXTS:-3}
+      BROWSER_SESSION_TTL_MS: ${BROWSER_SESSION_TTL_MS:-900000}
+      BROWSER_EVAL_ENABLED: ${BROWSER_EVAL_ENABLED:-0}
+      NODE_EXTRA_CA_CERTS: /etc/ssl/certs/ca-certificates.crt
+    depends_on:
+      artifact-init:
+        condition: service_completed_successfully
+      proxy:
+        condition: service_healthy
+    networks: [execnet]
+    volumes:
+      - src_agent_artifacts:/artifacts
+    shm_size: "1g"
+    read_only: true
+    tmpfs:
+      - /tmp:size=512m,mode=1777
+      - /home/browser:size=64m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 2g
+    cpus: 2
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:9401/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+    restart: "no"
+
+  reverse:
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: services/reverse/Dockerfile
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      REVERSE_PORT: "9402"
+      REVERSE_SERVICE_TOKEN: ${REVERSE_SERVICE_TOKEN:-dev-reverse-token}
+      ARTIFACTS_DIR: /artifacts
+      JADX_JAR: /opt/reverse/jadx/jadx-all.jar
+      ASC_HOME: /opt/reverse/asc
+      REVERSE_MAX_JOBS: ${REVERSE_MAX_JOBS:-2}
+      REVERSE_JOB_TIMEOUT_SECONDS: ${REVERSE_JOB_TIMEOUT_SECONDS:-600}
+      REVERSE_MAX_RESULT_CHARS: ${REVERSE_MAX_RESULT_CHARS:-120000}
+    depends_on:
+      artifact-init:
+        condition: service_completed_successfully
+    networks: [execnet]
+    volumes:
+      - src_agent_artifacts:/artifacts
+    read_only: true
+    tmpfs:
+      - /tmp:size=2g,mode=1777
+      - /home/reverse:size=128m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 6g
+    cpus: 4
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9402/healthz', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+    restart: "no"
+
+  # Trusted controller database boundary. Worker/executor cannot reach this
+  # service's database or credentials; they speak authenticated HTTP only.
+  dispatcher:
+    platform: linux/amd64
+    deploy:
+      replicas: ${DISPATCHER_REPLICAS:-2}
+    build:
+      context: .
+      dockerfile: packages/orchestrator/Dockerfile
+      args:
+        APT_MIRROR: ${APT_MIRROR:-deb.debian.org}
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
+        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmmirror.com}
+    command: ["node_modules/.bin/tsx", "src/dispatcher/main.ts"]
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      NODE_EXTRA_CA_CERTS: /etc/ssl/certs/ca-certificates.crt
+      SSL_CERT_FILE: /etc/ssl/certs/ca-certificates.crt
+      DISPATCHER_PORT: "9300"
+      DISPATCHER_TOKEN: ${DISPATCHER_TOKEN:-dev-dispatcher-token}
+      PG_HOST: postgres
+      PG_PORT: "5432"
+      PG_DB: srcagent
+      PG_USER: srcagent
+      PG_PASSWORD: srcagent_dev
+      # Scheduler/watchdog/review/summary policy fallbacks live with the DB writer.
+      WORKER_RETRY_BASE_MS: ${WORKER_RETRY_BASE_MS:-15000}
+      WATCHDOG_WINDOW_MINUTES: ${WATCHDOG_WINDOW_MINUTES:-10}
+      WATCHDOG_DUPLICATE_THRESHOLD: ${WATCHDOG_DUPLICATE_THRESHOLD:-10}
+      WATCHDOG_NO_PROGRESS_MINUTES: ${WATCHDOG_NO_PROGRESS_MINUTES:-15}
+      WATCHDOG_DEDUPE_MINUTES: ${WATCHDOG_DEDUPE_MINUTES:-30}
+      WATCHDOG_ESCALATE_AFTER: ${WATCHDOG_ESCALATE_AFTER:-2}
+      WATCHDOG_OUTCOME_DELAY_MS: ${WATCHDOG_OUTCOME_DELAY_MS:-600000}
+      FINDING_REVIEW_MODE: ${FINDING_REVIEW_MODE:-auto}
+      REQUEST_DEDUPE_TTL_MINUTES: ${REQUEST_DEDUPE_TTL_MINUTES:-30}
+      NARB_DISABLE_NATIVE_CACHE: "1"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [backend, ctl]
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+      - /home/worker:size=64m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 2g
+    cpus: 1
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:9300/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  watchdog:
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: packages/orchestrator/Dockerfile
+      args:
+        APT_MIRROR: ${APT_MIRROR:-deb.debian.org}
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
+        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmmirror.com}
+    command: ["node_modules/.bin/tsx", "src/watchdog/main.ts"]
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      WATCHDOG_ENABLED: ${WATCHDOG_ENABLED:-1}
+      WATCHDOG_PORT: "9400"
+      WATCHDOG_INTERVAL_MS: ${WATCHDOG_INTERVAL_MS:-60000}
+      WATCHDOG_WINDOW_MINUTES: ${WATCHDOG_WINDOW_MINUTES:-10}
+      WATCHDOG_DUPLICATE_THRESHOLD: ${WATCHDOG_DUPLICATE_THRESHOLD:-10}
+      WATCHDOG_NO_PROGRESS_MINUTES: ${WATCHDOG_NO_PROGRESS_MINUTES:-15}
+      WATCHDOG_MAX_OBSERVATIONS: ${WATCHDOG_MAX_OBSERVATIONS:-20}
+      WATCHDOG_LLM_ENABLED: ${WATCHDOG_LLM_ENABLED:-1}
+      WATCHDOG_LLM_INTERVAL_MS: ${WATCHDOG_LLM_INTERVAL_MS:-300000}
+      WATCHDOG_MODEL_ROUTE: ${WATCHDOG_MODEL_ROUTE:-default}
+      WATCHDOG_MODEL: ${WATCHDOG_MODEL:-deepseek-flash}
+      MODEL_PROXY_URL: http://api:3001/internal/model
+      MODEL_PROXY_TOKEN: ${MODEL_PROXY_TOKEN:-dev-model-proxy-token}
+      SRC_AGENT_MISSION_API_URL: ${MISSION_API_URL:-http://api:3001}
+      PG_HOST: postgres
+      PG_PORT: "5432"
+      PG_DB: srcagent
+      PG_USER: srcagent
+      PG_PASSWORD: srcagent_dev
+      DISPATCHER_URL: ${DISPATCHER_URL:-http://dispatcher:9300}
+      DISPATCHER_TOKEN: ${DISPATCHER_TOKEN:-dev-dispatcher-token}
+      NARB_DISABLE_NATIVE_CACHE: "1"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      dispatcher:
+        condition: service_healthy
+    networks: [backend, ctl]
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+      - /home/worker:size=32m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 512m
+    cpus: 0.5
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:9400/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  planner:
+    profiles: ["planner"]
+    build:
+      context: .
+      dockerfile: packages/orchestrator/Dockerfile
+      args:
+        APT_MIRROR: ${APT_MIRROR:-deb.debian.org}
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
+        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmmirror.com}
+    command: ["./scripts/worker-entrypoint.sh", "node_modules/.bin/tsx", "src/planner/main.ts"]
+    environment:
+      PLANNER_ENABLED: "1"
+      PLANNER_ID: ${PLANNER_ID:-planner-1}
+      PLANNER_INTERVAL_MS: "3000"
+      PLANNER_DEBOUNCE_MS: ${PLANNER_DEBOUNCE_MS:-5000}
+      PLANNER_LEASE_MS: ${PLANNER_LEASE_MS:-300000}
+      # P3-B1: typed blackboard frontier injection (A/B: PLANNER_FRONTIER_ENABLED=0).
+      PLANNER_FRONTIER_ENABLED: ${PLANNER_FRONTIER_ENABLED:-1}
+      PLANNER_FRONTIER_FACT_LIMIT: ${PLANNER_FRONTIER_FACT_LIMIT:-20}
+      PLANNER_FRONTIER_INTENT_LIMIT: ${PLANNER_FRONTIER_INTENT_LIMIT:-20}
+      PLANNER_PARALLEL_TASKS: ${PLANNER_PARALLEL_TASKS:-3}
+      PLANNER_MAX_OPEN_TASKS: ${PLANNER_MAX_OPEN_TASKS:-3}
+      PG_HOST: postgres
+      TZ: ${TZ:-Asia/Shanghai}
+      PG_PORT: "5432"
+      PG_DB: srcagent
+      PG_USER: srcagent
+      PG_PASSWORD: srcagent_dev
+      # Planner also uses the internal model proxy; no provider key in this process.
+      MODEL_PROXY_URL: ${MODEL_PROXY_URL:-http://api:3001/internal/model}
+      MODEL_PROXY_TOKEN: ${MODEL_PROXY_TOKEN:-dev-model-proxy-token}
+      MODEL_PROXY_TOKEN_ENV: ${MODEL_PROXY_TOKEN_ENV:-MODEL_PROXY_TOKEN}
+      LLM_BASE_URL: http://api:3001/internal/model/configs/default
+      LLM_MODEL: ${LLM_MODEL:-deepseek-flash}
+      LLM_REASONING_EFFORT: ${LLM_REASONING_EFFORT:-max}
+      LLM_MAX_OUTPUT_TOKENS: ${LLM_MAX_OUTPUT_TOKENS:-393216}
+      LLM_CONTEXT_WINDOW: ${LLM_CONTEXT_WINDOW:-1000000}
+      LLM_API_KEY_ENV: ${MODEL_PROXY_TOKEN_ENV:-MODEL_PROXY_TOKEN}
+      LLM_COMPAT_JSON: ${LLM_COMPAT_JSON:-}
+      LLM_REASONING_EFFORTS_JSON: ${LLM_REASONING_EFFORTS_JSON:-}
+      PROXY_URL: http://proxy:8080
+      EGRESS_MODE: ${EGRESS_MODE:-scope}
+      HTTP_PROXY: http://proxy:8080
+      HTTPS_PROXY: http://proxy:8080
+      http_proxy: http://proxy:8080
+      https_proxy: http://proxy:8080
+      NO_PROXY: postgres,api
+      no_proxy: postgres,api
+      NARB_DISABLE_NATIVE_CACHE: "1"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      proxy:
+        condition: service_healthy
+    networks: [backend]
+    volumes:
+      - proxycerts:/certs:ro
+    read_only: true
+    tmpfs:
+      - /tmp:size=512m,mode=1777
+      - /home/worker:size=64m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 3g
+    cpus: 2
+    restart: "no"
+
+  # Execution plane: no PostgreSQL credentials, no control-plane admin token.
+  executor:
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: packages/orchestrator/Dockerfile
+      args:
+        APT_MIRROR: ${APT_MIRROR:-deb.debian.org}
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
+        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmmirror.com}
+    command: ["./scripts/worker-entrypoint.sh", "node_modules/.bin/tsx", "src/executor/main.ts"]
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      EXECUTOR_PORT: "9100"
+      EXECUTOR_TOKEN: ${EXECUTOR_TOKEN:-dev-executor-token}
+      EXECUTOR_CONCURRENCY: ${EXECUTOR_CONCURRENCY:-3}
+      SRC_AGENT_RUN_DIR: /runs
+      SUMMARY_ENABLED: ${SUMMARY_ENABLED:-1}
+      SUMMARY_MAX_ROUNDS: ${SUMMARY_MAX_ROUNDS:-1}
+      SUMMARY_MAX_STEPS: ${SUMMARY_MAX_STEPS:-60}
+      SUMMARY_WALL_CLOCK_MS: ${SUMMARY_WALL_CLOCK_MS:-300000}
+      SUMMARY_CREATE_TASKS: ${SUMMARY_CREATE_TASKS:-1}
+      # The Agent only receives a scoped proxy token. Provider keys live in the
+      # API model proxy; the executor cannot reveal or reuse them.
+      MODEL_PROXY_TOKEN: ${MODEL_PROXY_TOKEN:-dev-model-proxy-token}
+      LLM_BASE_URL: http://api:3001/internal/model/configs/default
+      LLM_MODEL: ${LLM_MODEL:-deepseek-flash}
+      LLM_REASONING_EFFORT: ${LLM_REASONING_EFFORT:-max}
+      LLM_MAX_OUTPUT_TOKENS: ${LLM_MAX_OUTPUT_TOKENS:-393216}
+      LLM_CONTEXT_WINDOW: ${LLM_CONTEXT_WINDOW:-1000000}
+      LLM_API_KEY_ENV: ${MODEL_PROXY_TOKEN_ENV:-MODEL_PROXY_TOKEN}
+      LLM_COMPAT_JSON: ${LLM_COMPAT_JSON:-}
+      LLM_REASONING_EFFORTS_JSON: ${LLM_REASONING_EFFORTS_JSON:-}
+      PROXY_URL: http://proxy:8080
+      HTTP_PROXY: http://proxy:8080
+      HTTPS_PROXY: http://proxy:8080
+      http_proxy: http://proxy:8080
+      https_proxy: http://proxy:8080
+      NO_PROXY: api
+      no_proxy: api
+      SRC_AGENT_MISSION_API_URL: ${MISSION_API_URL:-http://api:3001}
+      SRC_AGENT_MISSION_API_TOKEN: ${API_READ_TOKEN:-dev-read-token}
+      SRC_AGENT_TRACE_SEARCH_ENABLED: ${WORKER_TRACE_SEARCH_ENABLED:-1}
+      COMMAND_GUARD_ENABLED: ${COMMAND_GUARD_ENABLED:-1}
+      COMMAND_GUARD_MODE: ${COMMAND_GUARD_MODE:-llm}
+      COMMAND_GUARD_FAIL_MODE: ${COMMAND_GUARD_FAIL_MODE:-closed}
+      COMMAND_GUARD_TIMEOUT_MS: ${COMMAND_GUARD_TIMEOUT_MS:-8000}
+      COMMAND_GUARD_BASE_URL: ${COMMAND_GUARD_BASE_URL:-http://api:3001/internal/model/roles/guard}
+      COMMAND_GUARD_APPROVAL_URL: ${COMMAND_GUARD_APPROVAL_URL:-}
+      COMMAND_GUARD_APPROVAL_TOKEN: ${COMMAND_GUARD_APPROVAL_TOKEN:-}
+      NARB_DISABLE_NATIVE_CACHE: "1"
+      BROWSER_SERVICE_URL: http://browser:9401
+      BROWSER_SERVICE_TOKEN: ${BROWSER_SERVICE_TOKEN:-dev-browser-token}
+      SRC_AGENT_BROWSER_ENABLED: ${SRC_AGENT_BROWSER_ENABLED:-1}
+      REVERSE_SERVICE_URL: http://reverse:9402
+      REVERSE_SERVICE_TOKEN: ${REVERSE_SERVICE_TOKEN:-dev-reverse-token}
+      SRC_AGENT_REVERSE_ENABLED: ${SRC_AGENT_REVERSE_ENABLED:-1}
+    volumes:
+      - src_agent_runs:/runs
+      - proxycerts:/certs:ro
+    networks: [execnet]
+    depends_on:
+      proxy:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp:size=512m,mode=1777
+      - /home/worker:size=64m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 3g
+    cpus: 2
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:9100/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+    restart: "no"
+    deploy:
+      replicas: ${EXECUTOR_REPLICAS:-2}
+
+  frontend:
+    build:
+      context: .
+      dockerfile: packages/frontend/Dockerfile
+      args:
+        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmmirror.com}
+    environment:
+      API_UPSTREAM: http://api:3001
+      # Empty = real login (session cookie; ADR-0038). Set a bearer value only
+      # to re-enable legacy service-token injection for every browser request.
+      # Automation scripts send SRC_AGENT_API_TOKEN/API_AUTH_TOKEN themselves.
+      API_LEGACY_TOKEN: ${API_LEGACY_TOKEN:-}
+    ports:
+      - "127.0.0.1:5173:80"
+    networks: [backend, edge]
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  # Dedicated P2.6 evaluation fixture (profile evals; not part of the normal stack).
+  evals-fixture:
+    build:
+      context: ./evals/fixtures
+    profiles: ["evals"]
+    ports:
+      - "64281:8080"
+    networks: [backend, edge, execnet]
+    restart: "no"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 3s
+      timeout: 2s
+      retries: 20
+
+  # Standalone control-plane API (P2 extraction). The legacy Next API remains
+  # available during cutover; this service is the deployment boundary frontends
+  # should target.
+  api:
+    build:
+      context: .
+      dockerfile: packages/api/Dockerfile
+      args:
+        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmmirror.com}
+    environment:
+      PG_HOST: postgres
+      PG_PORT: "5432"
+      PG_DB: srcagent
+      PG_USER: srcagent
+      PG_PASSWORD: srcagent_dev
+      TZ: ${TZ:-Asia/Shanghai}
+      API_PORT: "3001"
+      API_AUTH_TOKEN: ${API_AUTH_TOKEN:-dev-admin-token}
+      API_READ_TOKEN: ${API_READ_TOKEN:-dev-read-token}
+      AUTH_MODE: ${AUTH_MODE:-accounts}
+      AUTH_SESSION_TTL_SECONDS: ${AUTH_SESSION_TTL_SECONDS:-604800}
+      AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-0}
+      # P3-B2: separate admin token for model-config management/reveal. Empty =
+      # the regular token also acts as admin (dev-only fallback).
+      API_ADMIN_TOKEN: ${API_ADMIN_TOKEN:-}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://127.0.0.1:5173,http://localhost:5173}
+      EGRESS_MODE: ${EGRESS_MODE:-scope}
+      # Internal model proxy: the only process that knows provider keys.
+      MODEL_PROXY_TOKEN: ${MODEL_PROXY_TOKEN:-dev-model-proxy-token}
+      LLM_API_KEY: ${LLM_API_KEY}
+      LLM_API_KEYS: ${LLM_API_KEYS:-}
+      LLM_BASE_URL: ${LLM_BASE_URL:-https://api.deepseek.com}
+      LLM_MODEL: ${LLM_MODEL:-deepseek-flash}
+      LLM_COMPAT_JSON: ${LLM_COMPAT_JSON:-}
+      ARTIFACTS_DIR: /artifacts
+      ARTIFACT_MAX_BYTES: ${ARTIFACT_MAX_BYTES:-2147483648}
+      ARTIFACT_TTL_DAYS: ${ARTIFACT_TTL_DAYS:-7}
+      ARTIFACT_GROUP_ID: "10003"
+    networks: [backend, edge, execnet]
+    volumes:
+      - src_agent_artifacts:/artifacts
+    ports:
+      - "127.0.0.1:3001:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      artifact-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/api/health',{headers:{authorization:'Bearer '+process.env.API_AUTH_TOKEN}}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  proxycerts:
+  src_agent_runs:
+  src_agent_artifacts:
+
+networks:
+  backend:
+    # No direct internet route: workers may only reach the proxy, DB and API.
+    internal: true
+  edge: {}
+  execnet:
+    internal: true
+  ctl:
+    # Worker controller <-> trusted dispatcher only; no database route.
+    internal: true

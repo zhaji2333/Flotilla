@@ -1,0 +1,26 @@
+{
+  "name": "@src-agent/control-plane",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "lint": "oxlint src/"
+  },
+  "dependencies": {
+    "@src-agent/contracts": "workspace:*",
+    "@src-agent/tool-gateway": "workspace:*",
+    "pg": "^8.13.1",
+    "zod": "^4.6.6"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/pg": "^8.11.10",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  }
+}

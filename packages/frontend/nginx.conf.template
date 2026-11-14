@@ -1,0 +1,50 @@
+# The SPA authenticates with the session cookie (real login, ADR-0038). An
+# explicit bearer is forwarded untouched for automation.
+# API_LEGACY_TOKEN is an opt-in escape hatch and must never auto-authenticate a
+# browser: only requests that carry no Sec-Fetch-* header (scripts, curl, CI)
+# receive the legacy service token. Browsers always send Sec-Fetch-*, so with
+# API_LEGACY_TOKEN set they still have to log in with a session cookie.
+map "$http_sec_fetch_site|$http_sec_fetch_mode|$http_sec_fetch_dest" $src_agent_legacy_token {
+  default "";
+  "||"    "${API_LEGACY_TOKEN}";
+}
+map $http_authorization $src_agent_api_auth {
+  default $http_authorization;
+  ""      $src_agent_legacy_token;
+}
+
+server {
+  listen 80;
+  # Artifact/multipart uploads can be large; the API enforces ARTIFACT_MAX_BYTES.
+  client_max_body_size 2g;
+  client_body_timeout 3600s;
+  server_name _;
+  root /usr/share/nginx/html;
+  index index.html;
+
+  # SPA fallback: unknown routes render the app shell.
+  location / {
+    try_files $uri $uri/ /index.html;
+  }
+
+  # API-only boundary: the SPA talks to the standalone API service through
+  # nginx (same-origin). Session cookies pass through; an explicit bearer is
+  # forwarded for automation, and the opt-in legacy token (see map above) is
+  # only attached for non-browser clients without Sec-Fetch-* headers.
+  location /api/ {
+    proxy_pass ${API_UPSTREAM};
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header Authorization $src_agent_api_auth;
+    # SSE (/api/missions/:id/stream) needs unbuffered streaming.
+    proxy_buffering off;
+    proxy_request_buffering off;
+    proxy_cache off;
+    proxy_read_timeout 3600s;
+    proxy_set_header Connection "";
+  }
+
+  add_header X-Content-Type-Options "nosniff" always;
+  add_header Referrer-Policy "no-referrer" always;
+}

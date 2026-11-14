@@ -1,0 +1,26 @@
+# macOS
+.DS_Store
+
+# Secrets / local config
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Node / build output
+node_modules/
+dist/
+*.tsbuildinfo
+coverage/
+
+# Docker / runtime data
+pgdata/
+artifacts/
+runs/
+proxy/proxy
+
+# Local scratch
+*.log

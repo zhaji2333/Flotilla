@@ -1,0 +1,15 @@
+packages:
+  - 'packages/*'
+  - 'services/*'
+allowBuilds:
+  esbuild: false
+  '@deepseek-ai/dsh-subprocess-local': true
+  '@google/genai': true
+  koffi: true
+  node-pty: true
+  protobufjs: true
+
+# Force patched transitive versions (GHSA high advisories).
+overrides:
+  undici: ^8.12.3
+  zod: ^4.6.6

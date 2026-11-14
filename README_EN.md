@@ -22,7 +22,7 @@
 
 Flotilla is a **multi-graph + multi-agent penetration testing system built around the Super Agent architectural idea**.
 
-「"I meant to put some poetry, proverbs, or other chuunibyou lines here — but nothing came to mind."」
+「"𝓗𝓪𝓮𝓬 𝓿𝓮𝓻𝓫𝓪 𝓷𝓾𝓵𝓵𝓾𝓶 𝓼𝓮𝓷𝓼𝓾𝓶 𝓱𝓪𝓫𝓮𝓷𝓽, 𝓼𝓮𝓭 𝓹𝓾𝓽𝓸 𝓵𝓲𝓷𝓰𝓾𝓪𝓶 𝓹𝓮𝓻𝓮𝓰𝓻𝓲𝓷𝓪𝓶 𝓪𝓭𝓱𝓲𝓫𝓮𝓻𝓮 𝓼𝓪𝓽𝓲𝓼 𝓶𝓪𝓰𝓷𝓲𝓯𝓲𝓬𝓾𝓶 𝓮𝓼𝓼𝓮."」
 
 `Super Agent Architecture` · `Multi-graph & Shared Memory` · `Agent Full-Duplex Runtime` · `Watch Dog Self-Correction` · `Multi-Agent Autonomy` · `Auditable Evidence Chain`
 
@@ -86,7 +86,6 @@ As a poor security service engineer, I also want token-cost limits to reduce my 
 **One more plug: my pentesting SKILLs are now v2:**
 [**CkSKILLS v2 →**](https://github.com/zhaji2333/CkSKILLS/tree/v2)
 ---
-> Also, why do so many Agent products these days use ancient-style ci-poetry names + chuunibyou + a bit of poetry?
 
 ---
 

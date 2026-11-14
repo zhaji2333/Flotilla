@@ -336,7 +336,6 @@ services:
     restart: unless-stopped
 
   planner:
-    profiles: ["planner"]
     build:
       context: .
       dockerfile: packages/orchestrator/Dockerfile

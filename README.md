@@ -1,5 +1,7 @@
 # Flotilla —— 自主渗透测试平台
 
+[English](README_EN.md) · **中文**
+
 > 如果我是安服你还会爱我吗？这是本安服仔摸鱼时候搓出来的产品，每个安服仔都有一个安研&红队梦……
 
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)

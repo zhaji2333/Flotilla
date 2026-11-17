@@ -153,7 +153,7 @@ The console shows tasks, findings, traces, the blackboard, and the clue board in
 
 ### Skill system
 
-`skills/` ships 16 domain skill packs, triaged by `ck-router` according to target type: where to strike first and which layer to fall back to do not depend on improvisation.
+`skills/` ships 18 domain skill packs, triaged by `ck-router` according to target type: where to strike first and which layer to fall back to do not depend on improvisation.
 
 ---
 
@@ -321,7 +321,7 @@ flotilla/
 ├── packages/        # orchestration, API, console, harness plugin, curator, contracts, control plane, tool gateway
 ├── services/        # browser service (Playwright), reverse service (JADX / ASC / Hermes / IDA)
 ├── proxy/           # Go egress proxy
-├── skills/          # 16 skill packs, triaged by ck-router
+├── skills/          # 18 skill packs, triaged by ck-router
 ├── docs/            # architecture decisions, API contracts, screenshots
 ├── docker-compose.yml
 └── LICENSE
@@ -345,7 +345,7 @@ flotilla/
 
 Flotilla's design and skill system reference and compare with these projects:
 
-- [CkSKILLS v2](https://github.com/zhaji2333/CkSKILLS): the source and upstream maintenance repository of this project's 16 skill packs (project-owned).
+- [CkSKILLS v2](https://github.com/zhaji2333/CkSKILLS): the source and upstream maintenance repository of this project's 18 skill packs (project-owned).
 - [agent-skills](https://github.com/addyosmani/agent-skills): development methodology and engineering skills (MIT).
 - [JADX](https://github.com/skylot/jadx): APK decompilation (Apache-2.0, vendored).
 - [Playwright](https://github.com/microsoft/playwright): browser automation (Apache-2.0).

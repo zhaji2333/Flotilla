@@ -40,7 +40,7 @@ description: WAF/过滤/检测绕过与失败升级专项。当 payload 被 403/
 | `knowledge/waf-bypass-techniques-04-四、分类绕过速查.md` | 分类绕过速查（SQL/XSS/命令） | 1.0KB |
 | `knowledge/waf-bypass-techniques-05-五、403-绕过专项.md` | 403 绕过 | 0.4KB |
 
-其余 5 个知识块（按标题搜，禁止通读）：`ls knowledge/`；原始清单见 `../../../docs/MIGRATION.md`。
+其余 5 个知识块（按标题搜，禁止通读）：`ls knowledge/`；原始清单见 `../MIGRATION.md`。
 
 ## 相关
 

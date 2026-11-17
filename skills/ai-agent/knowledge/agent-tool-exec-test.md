@@ -1,5 +1,5 @@
 > 来源：实战知识库（真实 SRC 战法沉淀，已并入 CkSKILLS_v2）。
-> 与 `rules/` 冲突时以 rules 为准；CORS 按 `../../../../rules/20-min-harm.md` 与团队取舍不主动挖。
+> 与 `rules/` 冲突时以 rules 为准；CORS 按 `../../../rules/20-min-harm.md` 与团队取舍不主动挖。
 
 # 对话口工具真执行
 
@@ -7,7 +7,7 @@
 > **不是**越狱 / 提示词（别开 `llm-security-test.md` 当开场）。  
 > **不是**云 IDE 弱口令 + `command/exec` RPC（那套见 `cloud-ide-codex-rce-chain.md`）。  
 > 未授权读历史见 `../../web-auth-access/knowledge/idor-test.md`「助手历史未授权读他人任务」（正文只在那一篇）。  
-> 写不写只认 `../../../../rules/40-evidence-report.md`。命令只做无害标记 / `id`。
+> 写不写只认 `../../../rules/40-evidence-report.md`。命令只做无害标记 / `id`。
 
 ## 认什么
 
@@ -24,7 +24,7 @@
 
 1. 有身份口就对照应拦；没有身份口不要当成没洞  
 2. POST 对话口，让模型**用那个工具**跑 `id`（或 `echo 标记 && id`），或用 Python 算一串你本机也能算的 md5。不要只问「请执行」而不点名工具。`id` 只证明命令真跑了，**还要跟**  
-3. 看事件流 / tool 回包。**SSE 只有 delta、没有 `toolName` 别停**：把回流里的 32 位 hex 跟本机 hashlib 对；或让它列工作目录，看有没有提示里从未出现的 `../../../../AGENTS.md` / `../../../../AGENTS.md` / `../../../../AGENTS.md`  
+3. 看事件流 / tool 回包。**SSE 只有 delta、没有 `toolName` 别停**：把回流里的 32 位 hex 跟本机 hashlib 对；或让它列工作目录，看有没有提示里从未出现的 `../../../AGENTS.md` / `../../../AGENTS.md` / `../../../AGENTS.md`  
 4. 有 `fileUrls` / 附件 URL 参：填外站，看服务端会不会把标题/ICP 拉回对话  
 5. 命令跑起来后跟这三样（有入口就打，没有写原因）：SRC 给的内网验证台 flag；云元数据/临时钥；沙箱里他主体业务正文（对话历史、工单、密钥文件）。公网首页不算通内网  
 

@@ -41,7 +41,7 @@ grep -rniE "appKey|appSecret|secret|sign|signature|md5|encrypt|aes|rsa" /tmp/jad
 ### 1.3 SO 层追踪（静态优先 → 抓包兜底 → Frida 最后可选）
 
 > **优先顺序**：① **IDA 9.5 无头模式（idalib）+ 官方 IDA MCP 纯静态**（无需设备/root，最稳，主路径）→ ② **抓包截明文**（无需 root，模拟器稳定）→ ③ **Frida Hook**（仅静态读不动时的最后手段，且只作取证）。
-> **抄近路**：大包只想确认 native 算法/实现、Java 调用点已明确时，可先用 `asc-fast-hunt` 的 `findrefs`/`getclass` 定位 Java 调用点，然后**直接进本节 ① 或 三、Native 深挖**，不付 JADX 全量成本（见 `../../../../AGENTS.md` 3.1）。
+> **抄近路**：大包只想确认 native 算法/实现、Java 调用点已明确时，可先用 `asc-fast-hunt` 的 `findrefs`/`getclass` 定位 Java 调用点，然后**直接进本节 ① 或 三、Native 深挖**，不付 JADX 全量成本（见 `../../../AGENTS.md` 3.1）。
 > 本节的定位是**密钥追踪视角**；so 库的完整漏洞挖掘（RCE/提权/溢出/沙箱逃逸/DoS）见 **三、Native/内存安全深挖**。
 
 **① 静态分析（IDA 9.5 无头 + MCP，主路径，无需设备）**
@@ -96,4 +96,4 @@ Java.perform(function(){
 - **取证链**：① 反编译/JADX 定位硬编码密钥（截图+路径）② 签名/加密逻辑还原（Python 脚本）③ 未授权请求成功返回真实数据（Burp 请求块+响应截图）
 - 影响证明：拉到的数据必须是**他人/全量**数据（非自己账号、非样例）
 - 定级：聊天/隐私/财务数据批量泄露 → 中高危；可写可删 = 高危/严重
-- 正式报告按 `../../../../rules/40-evidence-report.md`；不写 Frida、不写逆向工具名，只写密钥硬编码 + 接口鉴权缺失
+- 正式报告按 `../../../rules/40-evidence-report.md`；不写 Frida、不写逆向工具名，只写密钥硬编码 + 接口鉴权缺失

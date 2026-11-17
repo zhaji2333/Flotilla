@@ -2,6 +2,9 @@ import { randomUUID } from 'node:crypto';
 import { getMissionOverview, getRuntimeSettings } from '@src-agent/control-plane';
 import type { Pool } from 'pg';
 import { finalizeMissionState } from '../repositories/worker-repository.js';
+import { isPlanCreateBlockedByPhase } from '../scheduler/mission-phase.js';
+import { buildCoverageRepairObjective, needsCoverageRepair } from './coverage.js';
+import { computePlannerPriority } from './roi.js';
 import { getMissionFrontier } from '@src-agent/control-plane';
 import {
   parsePlan,
@@ -231,11 +234,17 @@ export async function applyPlannerPlan(
       throw new PlannerPlanError(`planner run ${job.runId} is not running`);
     }
     const mission = await client.query(
-      `SELECT target, objective, success_criteria, grant_id, grant_version FROM missions WHERE id = $1 FOR UPDATE`,
+      `SELECT target, objective, success_criteria, grant_id, grant_version, phase FROM missions WHERE id = $1 FOR UPDATE`,
       [job.missionId],
     );
     if (mission.rowCount === 0) throw new PlannerPlanError(`mission ${job.missionId} not found`);
     const missionRow = mission.rows[0];
+    // v1.0.2: reporting/closed missions may not create new attack tasks. The
+    // plan may still update todos/hints/checkpoints so the Planner can steer
+    // the reporting endgame.
+    if (process.env.V102_MISSION_DEADLINE !== '0' && isPlanCreateBlockedByPhase(String(missionRow.phase ?? 'active'), plan.actions)) {
+      throw new PlannerPlanError(`mission is in ${String(missionRow.phase)} phase; creating new tasks is not allowed`);
+    }
     const target = (missionRow.target ?? {}) as { value?: string };
     const targetValue = String(target.value ?? '');
     // B4: intentional parallelism is capped at two distinct angles per mission.
@@ -247,6 +256,28 @@ export async function applyPlannerPlan(
         [job.missionId],
       )).rows.map(row => String(row.angle)),
     );
+
+    // v1.0.2 ROI ordering (ADR-0054): generic features only; reserved slot for
+    // pending high-value coverage. Disabled by default (V102_PLANNER_ROI).
+    let pendingCoverageCount = 0;
+    if (process.env.V102_PLANNER_ROI === '1') {
+      const pending = await client.query(
+        `SELECT count(*)::int AS count FROM coverage_requirements
+          WHERE mission_id = $1 AND status = 'pending'`,
+        [job.missionId],
+      );
+      pendingCoverageCount = Number(pending.rows[0]?.count ?? 0);
+    }
+    const createPriority = process.env.V102_PLANNER_ROI === '1'
+      ? computePlannerPriority({
+          targetCriticality: 0.5,
+          coverageGap: pendingCoverageCount,
+          priorAttempts: 0,
+          expectedFindings: 0.5,
+          expensiveTools: 0,
+          remainingBudgetMs: 1_200_000,
+        })
+      : 0.5;
 
     let createdTasks = 0;
     let createdThisPlan = 0;
@@ -275,7 +306,7 @@ export async function applyPlannerPlan(
           `INSERT INTO tasks
              (id, mission_id, type, state, depends_on, grant_id, grant_version, budget, payload,
               success_criteria, fingerprint, idempotency_key, priority, planner_run_id, angle)
-           VALUES ($1,$2,'intent','proposed',$3::uuid[],$4,$5,$6,$7,$8,$9,$10,0.5,$11,$12)`,
+           VALUES ($1,$2,'intent','proposed',$3::uuid[],$4,$5,$6,$7,$8,$9,$10,$13,$11,$12)`,
           [
             id,
             job.missionId,
@@ -289,6 +320,7 @@ export async function applyPlannerPlan(
             `planner:${job.runId}:${actionIndex}`,
             job.runId,
             angle ?? null,
+            createPriority,
           ],
         );
         await client.query(
@@ -370,6 +402,52 @@ export async function applyPlannerPlan(
         }
         await client.query(`DELETE FROM watchdog_task_state WHERE task_id = $1`, [cancelTaskId]);
         cancelled += 1;
+      }
+    }
+
+    // v1.0.2 coverage invariant (ADR-0054): if the plan creates no task while a
+    // required target/attack surface is still pending, auto-repair with a
+    // generic assessment task instead of silently closing the mission.
+    if (process.env.V102_PLANNER_COVERAGE_INVARIANT === '1' && validated.creates.length === 0) {
+      const requirements = await client.query(
+        `SELECT target_ref, attack_surface, status FROM coverage_requirements
+          WHERE mission_id = $1 AND status = 'pending' ORDER BY target_ref, attack_surface LIMIT 3`,
+        [job.missionId],
+      );
+      const pending = requirements.rows.map(row => ({
+        targetRef: String(row.target_ref),
+        attackSurface: String(row.attack_surface),
+        status: String(row.status) as 'pending',
+        evidenceRef: null,
+        disposition: null,
+      }));
+      if (needsCoverageRepair(pending as never, 0)) {
+        for (const requirement of pending.slice(0, 2)) {
+          const id = randomUUID();
+          await client.query(
+            `INSERT INTO tasks
+               (id, mission_id, type, state, depends_on, grant_id, grant_version, budget, payload,
+                success_criteria, fingerprint, idempotency_key, priority, planner_run_id)
+             VALUES ($1,$2,'intent','proposed','{}'::uuid[],$3,$4,$5,$6,$7,$8,$9,0.9,$10)`,
+            [
+              id,
+              job.missionId,
+              missionRow.grant_id,
+              missionRow.grant_version,
+              JSON.stringify({ maxSteps: 0, maxWallClockMs: 1_200_000 }),
+              JSON.stringify({ objective: buildCoverageRepairObjective(requirement), kind: 'coverage_repair', targetUrl: targetValue }),
+              JSON.stringify({}),
+              taskFingerprint(buildCoverageRepairObjective(requirement), targetValue),
+              `planner:${job.runId}:coverage:${requirement.targetRef}`.slice(0, 200),
+              job.runId,
+            ],
+          );
+          await client.query(
+            `INSERT INTO events (mission_id, event_type, aggregate_id, payload) VALUES ($1,'task.created',$2,$3)`,
+            [job.missionId, id, JSON.stringify({ type: 'intent', state: 'proposed', coverageRepair: true, targetRef: requirement.targetRef })],
+          );
+          createdTasks += 1;
+        }
       }
     }
 

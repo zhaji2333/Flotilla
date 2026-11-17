@@ -31,3 +31,4 @@ export * from './repositories/auth-repository';
 export * from './repositories/admin-repository';
 export * from './repositories/finding-lineage-repository';
 export * from './repositories/watchdog-dashboard-repository';
+export * from './repositories/reliability-repository';

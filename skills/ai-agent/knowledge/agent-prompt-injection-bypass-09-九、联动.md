@@ -6,4 +6,4 @@
 - 不想跟模型耗 → `agent-execution-channel-hijack`  
 - 应用侧 WAF → `waf-bypass-techniques`  
 - Chatbot/RAG 全景（无云执行）→ `ai-llm-agent-security`  
-- 成稿 → 按 `../../../../rules/40-evidence-report.md`
+- 成稿 → 按 `../../../rules/40-evidence-report.md`

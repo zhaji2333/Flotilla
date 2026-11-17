@@ -1,11 +1,11 @@
 > 来源：实战知识库（真实 SRC 战法沉淀，已并入 CkSKILLS_v2）。
-> 与 `rules/` 冲突时以 rules 为准；CORS 按 `../../../../rules/20-min-harm.md` 与团队取舍不主动挖。
+> 与 `rules/` 冲突时以 rules 为准；CORS 按 `../../../rules/20-min-harm.md` 与团队取舍不主动挖。
 
 # Groovy 公式沙箱打到命令执行
 
 > 战法索引指针。认的是「数据模型/公式把用户脚本当 Groovy 跑，SM 只拦了 Runtime.exec」。  
 > **不是** Jenkins `/script`，也不是对话口工具执行（见 `../../ai-agent/knowledge/agent-tool-exec-test.md`）。  
-> 写不写只认 `../../../../rules/40-evidence-report.md`。命令只做 `id`。
+> 写不写只认 `../../../rules/40-evidence-report.md`。命令只做 `id`。
 
 ## 认什么
 

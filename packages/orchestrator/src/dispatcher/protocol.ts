@@ -76,6 +76,7 @@ export type DispatcherClaimResponse = { task: ClaimedTask | null };
 export type DispatcherModelConfigResponse = { config: SafeModelConfig | null };
 export type DispatcherMissionContextResponse = { context: MissionContext | null };
 export type DispatcherPriorWorkResponse = { priorWork: PriorWorkResult | null };
+export type DispatcherHandoffDigestResponse = { handoff: { version: number; digest: string; taskId: string } | null };
 export type DispatcherTickResponse = SchedulerTickResult;
 export type DispatcherWatchdogResponse = WatchdogTickResult;
 export type DispatcherHintsResponse = { hints: ClaimedHint[] };

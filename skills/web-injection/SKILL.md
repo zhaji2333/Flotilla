@@ -43,7 +43,7 @@ description: SQL/NoSQL/命令/SSTI/表达式注入与参数 fuzz 专项。当参
 | `knowledge/injection-test.md` | 真实 SRC 注入打法（OR+total、订阅 iframe 等） | 4.2KB |
 | `knowledge/type-juggling-test.md` | 类型混淆/弱比较 | 10.8KB |
 
-其余 1 个知识块（按标题搜，禁止通读）：`ls knowledge/`；原始清单见 `../../../docs/MIGRATION.md`。
+其余 1 个知识块（按标题搜，禁止通读）：`ls knowledge/`；原始清单见 `../MIGRATION.md`。
 
 ## 相关
 

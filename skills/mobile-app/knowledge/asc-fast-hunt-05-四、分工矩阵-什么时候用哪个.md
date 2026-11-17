@@ -20,7 +20,7 @@
 | **共现模式搜索**（`startActivity.*getParcelable` 等） | JADX 产物 + `grep -rE` | 引用表查询无法表达 |
 | **报告取证截图** | `apk-reversing` JADX 产物 | DAD 输出寄存器级 + 类型错误，不能当证据 |
 | 组件安全深挖 + 动态验证 + PoC | `android-security-audit` | 本技能只定位不验证 |
-| 漏洞定级与报告成稿 | `../../../../rules/15-hunting-mindset.md`（六问）+ `../../../../rules/40-evidence-report.md`（定级/成稿） | MD 四段式 |
+| 漏洞定级与报告成稿 | `../../../rules/15-hunting-mindset.md`（六问）+ `../../../rules/40-evidence-report.md`（定级/成稿） | MD 四段式 |
 
 **成本对比（官方基准）**：59–352MB 包上，搜索 **322ms–1.597s**、单类反编译 **141–303ms**、内存 **36–141MB**、**磁盘 0**；同档 JADX 是 20s–8m2s（352MB 直接 OOM）、6s–1m32s、1–13.2GB、119–322MB 落盘。搜索快 **62–302×**、单类反编译快 **38–304×**、省内存 **28–96×**。本技能全流程（Manifest + 5 组关键词 + 读 10 个类）通常 **1 分钟内**跑完。
 

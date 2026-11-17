@@ -5,7 +5,7 @@
 > **进入条件（命中任一才进本章，否则别碰 IDA）**：
 > ① JADX 产物 grep 到 `native ` 声明或 `System.loadLibrary/System.load`；② `lib/arm64-v8a/` 下有业务 so（非壳）；③ 字符串/密钥/命令执行命中点落在 native 方法参数上；④ 需要还原算法但 Java 层只是 JNI 壳。
 > **反例（不进本章）**：纯 Java 无 so；只有壳 so 且未脱壳（先 `apk-reversing`）；Java 层已能定论且不需要 native 证据。
-> **抄近路**：大包只想确认 native 算法、JADX 全量成本过高时，先用 `asc-fast-hunt` 定位 Java 调用点，**直接进本章**（见 `../../../../AGENTS.md` 3.1）。
+> **抄近路**：大包只想确认 native 算法、JADX 全量成本过高时，先用 `asc-fast-hunt` 定位 Java 调用点，**直接进本章**（见 `../../../AGENTS.md` 3.1）。
 
 > **本章定位**：Java 层审完（二）之后，对 `lib/arm64-v8a/*.so` 做**证据级**漏洞挖掘，重点产出 **RCE / 提权 / 沙箱逃逸 / 溢出 / DoS**。
 > **操作手册（必读）**：[references/IDA95-native-audit.md](references/IDA95-native-audit.md) —— 含已验证环境路径、完整 IDAPython 脚本模板、六步工作流、判定分级表。

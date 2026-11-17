@@ -147,7 +147,7 @@ Watch Dog 是只读观察者：规则层盯停滞、方向漂移、重复请求�
 
 ### 技能体系
 
-`skills/` 内置 16 个领域技能包，由 `ck-router` 按目标类型分诊：先打哪里、失败后换哪层，不靠模型临场发挥。
+`skills/` 内置 18 个领域技能包，由 `ck-router` 按目标类型分诊：先打哪里、失败后换哪层，不靠模型临场发挥。
 
 ---
 
@@ -315,7 +315,7 @@ flotilla/
 ├── packages/        # 编排、接口、控制台、执行插件、复核器、契约、控制面、工具网关
 ├── services/        # 浏览器服务（Playwright）、逆向服务（JADX / ASC / Hermes / IDA）
 ├── proxy/           # Go 出站代理
-├── skills/          # 16 个技能包，ck-router 分诊
+├── skills/          # 18 个技能包，ck-router 分诊
 ├── docs/            # 架构决策、接口契约、截图
 ├── docker-compose.yml
 └── LICENSE
@@ -339,7 +339,7 @@ flotilla/
 
 Flotilla 的设计与技能体系参考、对照了这些项目：
 
-- [CkSKILLS v2](https://github.com/zhaji2333/CkSKILLS)：本项目 16 个技能包的来源与上游维护仓库（自有）。
+- [CkSKILLS v2](https://github.com/zhaji2333/CkSKILLS)：本项目 18 个技能包的来源与上游维护仓库（自有）。
 - [agent-skills](https://github.com/addyosmani/agent-skills)：开发方法论与工程技能（MIT）。
 - [JADX](https://github.com/skylot/jadx)：APK 反编译（Apache-2.0，vendored）。
 - [Playwright](https://github.com/microsoft/playwright)：浏览器自动化（Apache-2.0）。

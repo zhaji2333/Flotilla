@@ -1,7 +1,7 @@
 > 来源：实战知识库（真实 SRC 战法沉淀，已并入 CkSKILLS_v2）。
-> 与 `rules/` 冲突时以 rules 为准；CORS 按 `../../../../rules/20-min-harm.md` 与团队取舍不主动挖。
+> 与 `rules/` 冲突时以 rules 为准；CORS 按 `../../../rules/20-min-harm.md` 与团队取舍不主动挖。
 
-> 进站勾完标准见 `../../../../rules/60-scope-iteration.md` §4.2.1：能看出条数/内容变化的口，每个过滤参都测；只回「请登录」整段 N/A。按栈选探针（JSON/Mongo 操作符、搜索框 ES、Java HQL/SpEL、有模板 SSTI；SQL 面仍走引号/布尔/延时）。405 后换位置不只有换编码。
+> 进站勾完标准见 `../../../rules/60-scope-iteration.md` §4.2.1：能看出条数/内容变化的口，每个过滤参都测；只回「请登录」整段 N/A。按栈选探针（JSON/Mongo 操作符、搜索框 ES、Java HQL/SpEL、有模板 SSTI；SQL 面仍走引号/布尔/延时）。405 后换位置不只有换编码。
 > 战法索引「列表筛选项 OR + total」「邮件订阅 iframe 同目录 list」用标题搜。WooYun 统计 / sqlmap --os-shell / 反弹 shell / 英文附件已砍；现场按栈自己变，不靠教材。
 
 # 注入类漏洞测试手册（SQL注入 / 命令注入 / SSTI）

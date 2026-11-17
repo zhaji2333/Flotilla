@@ -70,3 +70,9 @@ describe('assignment without skills', () => {
     expect(buildAssignmentPrompt(task, [], { skillsEnabled: true })).toContain('skill("ck-router")');
   });
 });
+  it('adds a reference-lookup nudge for CVE/version tasks (v1.0.2)', () => {
+    const prompt = buildAssignmentPrompt({ ...task, objective: 'confirm CVE-2025-1234 on the CMS version' });
+    expect(prompt).toContain('REFERENCE LOOKUP REQUIRED');
+    expect(buildAssignmentPrompt({ ...task, objective: 'enumerate endpoints on the target' }))
+      .not.toContain('REFERENCE LOOKUP REQUIRED');
+  });

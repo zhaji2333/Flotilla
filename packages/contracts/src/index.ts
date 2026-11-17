@@ -221,4 +221,189 @@ export const TaskClaimSchema = z.object({
 }).strict();
 export type TaskClaim = z.infer<typeof TaskClaimSchema>;
 
+// ── v1.0.2 reliability primitives ───────────────────────────
+// Deadline/reporting, no-silent-abandonment dispositions, structured handoff,
+// preflight checks, retry policy and coverage requirements. All additive: old
+// missions/tasks keep their previous semantics when flags are off.
+
+export const MissionPhaseSchema = z.enum(['active', 'reporting', 'closed']);
+export const SearchPolicySchema = z.enum(['disabled', 'limited', 'allowed']);
+export type SearchPolicy = z.infer<typeof SearchPolicySchema>;
+export type MissionPhase = z.infer<typeof MissionPhaseSchema>;
+
+export const MissionDeadlineSchema = z.object({
+  /** Absolute mission deadline; null keeps the legacy unbounded behavior. */
+  deadlineAt: z.string().datetime().nullable(),
+  phase: MissionPhaseSchema.default('active'),
+  /** How long before the deadline the mission enters `reporting`. */
+  reportingLeadMs: z.number().int().min(0).max(86_400_000).default(900_000),
+}).strict();
+export type MissionDeadline = z.infer<typeof MissionDeadlineSchema>;
+
+export const TaskDispositionSchema = z.enum([
+  'completed',
+  'exhausted',
+  'blocked',
+  'out_of_scope',
+  'insufficient_evidence',
+  'cancelled',
+  'timeout',
+]);
+export type TaskDisposition = z.infer<typeof TaskDispositionSchema>;
+
+/** Derive a disposition for legacy terminal rows when the column is NULL. */
+export function deriveTaskDisposition(
+  state: TaskState,
+  failureClass?: string | null,
+): TaskDisposition | null {
+  if (state === 'done' || state === 'verified') return 'completed';
+  if (state === 'exhausted') return 'exhausted';
+  if (state === 'blocked') return 'blocked';
+  if (state === 'cancelled' || state === 'stale' || state === 'handed_back') return 'cancelled';
+  if (state === 'retry_wait' && failureClass === 'budget_exhausted') return 'timeout';
+  return null;
+}
+
+const HandoffForbiddenKey = /(password|passwd|secret|private[_-]?key|api[_-]?key|access[_-]?token|refresh[_-]?token|bearer[_-]?token)/i;
+const HandoffSecretValue = /-----BEGIN [A-Z ]*PRIVATE KEY-----|(?:sk|rk|pk)[_-][A-Za-z0-9_]{16,}|ghp_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}/;
+
+function assertNoHandoffSecrets(value: unknown, path: string, ctx: z.RefinementCtx): void {
+  if (typeof value === 'string') {
+    if (value.length > 2_000) {
+      ctx.addIssue({ code: 'custom', message: `handoff field is too long (${path})`, path: [path] });
+      return;
+    }
+    if (HandoffSecretValue.test(value)) {
+      ctx.addIssue({ code: 'custom', message: `handoff contains secret material (${path})`, path: [path] });
+    }
+    return;
+  }
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => assertNoHandoffSecrets(item, `${path}[${index}]`, ctx));
+    return;
+  }
+  if (value && typeof value === 'object') {
+    for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
+      if (HandoffForbiddenKey.test(key)) {
+        ctx.addIssue({ code: 'custom', message: `handoff must not contain sensitive field "${key}"`, path: [key] });
+        continue;
+      }
+      assertNoHandoffSecrets(nested, `${path}.${key}`, ctx);
+    }
+  }
+}
+
+export const TaskHandoffSchema = z.object({
+  targetRef: z.string().min(1).max(500).nullable().default(null),
+  scopeRef: z.string().min(1).max(500).nullable().default(null),
+  accessState: z.enum(['unknown', 'authorized', 'authenticated', 'blocked']).default('unknown'),
+  /** References only (asset/credential ids), never plaintext credentials. */
+  credentialRefs: z.array(z.string().min(1).max(200)).max(5).default([]),
+  confirmedFacts: z.array(z.string().min(1).max(500)).max(20).default([]),
+  evidenceIds: z.array(z.string().min(1).max(200)).max(50).default([]),
+  failedHypotheses: z.array(z.string().min(1).max(500)).max(10).default([]),
+  nextActions: z.array(z.string().min(1).max(500)).min(1).max(3),
+  blockers: z.array(z.string().min(1).max(500)).max(5).default([]),
+  approvalsNeeded: z.array(z.string().min(1).max(200)).max(5).default([]),
+  preflightRef: z.string().max(200).nullable().default(null),
+  lastActivityRef: z.string().max(200).nullable().default(null),
+}).strict().superRefine((value, ctx) => assertNoHandoffSecrets(value, 'handoff', ctx));
+export type TaskHandoff = z.infer<typeof TaskHandoffSchema>;
+
+/** Bounded digest injected into the next claim; never the full handoff. */
+export const TaskHandoffDigestSchema = z.object({
+  version: z.number().int().positive(),
+  targetRef: z.string().max(500).nullable(),
+  accessState: z.enum(['unknown', 'authorized', 'authenticated', 'blocked']),
+  confirmedFacts: z.array(z.string().max(500)).max(8).default([]),
+  failedHypotheses: z.array(z.string().max(500)).max(5).default([]),
+  nextActions: z.array(z.string().max(500)).max(3).default([]),
+  blockers: z.array(z.string().max(500)).max(3).default([]),
+  approvalsNeeded: z.array(z.string().max(200)).max(3).default([]),
+}).strict();
+export type TaskHandoffDigest = z.infer<typeof TaskHandoffDigestSchema>;
+
+/** Bound a handoff for claim-time injection; never includes full text or secrets. */
+export function buildTaskHandoffDigest(handoff: TaskHandoff, version: number): TaskHandoffDigest {
+  const clip = (value: string, max: number) => (value.length > max ? `${value.slice(0, max - 1)}…` : value);
+  return TaskHandoffDigestSchema.parse({
+    version,
+    targetRef: handoff.targetRef,
+    accessState: handoff.accessState,
+    confirmedFacts: handoff.confirmedFacts.slice(0, 8).map(value => clip(value, 240)),
+    failedHypotheses: handoff.failedHypotheses.slice(0, 5).map(value => clip(value, 240)),
+    nextActions: handoff.nextActions.slice(0, 3).map(value => clip(value, 300)),
+    blockers: handoff.blockers.slice(0, 3).map(value => clip(value, 240)),
+    approvalsNeeded: handoff.approvalsNeeded.slice(0, 3).map(value => clip(value, 120)),
+  });
+}
+
+export const PreflightDecisionSchema = z.enum(['proceed', 'blocked', 'out_of_scope', 'retry_wait']);
+export type PreflightDecision = z.infer<typeof PreflightDecisionSchema>;
+
+export const PreflightCheckSchema = z.object({
+  phaseOk: z.boolean(),
+  deadlineOk: z.boolean(),
+  scopeOk: z.boolean(),
+  targetVersion: z.string().max(200).nullable().default(null),
+  authOk: z.boolean(),
+  credentialVersion: z.string().max(200).nullable().default(null),
+  pendingDestructiveApproval: z.boolean().default(false),
+  decision: PreflightDecisionSchema,
+  reason: z.string().max(1_000).nullable().default(null),
+  evidenceRef: z.string().max(500).nullable().default(null),
+}).strict();
+export type PreflightCheck = z.infer<typeof PreflightCheckSchema>;
+
+export const RetryPolicySchema = z.object({
+  maxAttempts: z.number().int().min(1).max(10).default(3),
+  baseDelayMs: z.number().int().min(100).max(3_600_000).default(30_000),
+  maxDelayMs: z.number().int().min(100).max(86_400_000).default(900_000),
+  jitterRatio: z.number().min(0).max(1).default(0.2),
+}).strict();
+export type RetryPolicy = z.infer<typeof RetryPolicySchema>;
+
+export const CoverageStatusSchema = z.enum(['pending', 'covered', 'negative', 'dispositioned']);
+export type CoverageStatus = z.infer<typeof CoverageStatusSchema>;
+
+export const CoverageRequirementSchema = z.object({
+  targetRef: z.string().min(1).max(500),
+  attackSurface: z.string().min(1).max(100),
+  status: CoverageStatusSchema.default('pending'),
+  evidenceRef: z.string().max(500).nullable().default(null),
+  disposition: TaskDispositionSchema.nullable().default(null),
+}).strict();
+export type CoverageRequirement = z.infer<typeof CoverageRequirementSchema>;
+
+/** Derive the authorized coverage surface(s) a mission must disposition. */
+export function deriveCoverageRequirements(
+  target: MissionTarget | null | undefined,
+): CoverageRequirement[] {
+  if (!target) return [];
+  if (target.type === 'file') {
+    return [{ targetRef: `artifact:${target.value}`, attackSurface: 'artifact', status: 'pending', evidenceRef: null, disposition: null }];
+  }
+  const surface = target.type === 'ip' ? 'network' : 'web';
+  return [{
+    targetRef: `target:${target.value}`,
+    attackSurface: surface,
+    status: 'pending',
+    evidenceRef: null,
+    disposition: null,
+  }];
+}
+
+/** Exp backoff with capped jitter; pure so scheduler tests can assert it. */
+export function computeRetryDelayMs(
+  attempt: number,
+  policy: Partial<RetryPolicy> = {},
+  random: () => number = Math.random,
+): number {
+  const parsed = RetryPolicySchema.parse(policy);
+  const exponent = Math.max(0, attempt - 1);
+  const base = Math.min(parsed.maxDelayMs, parsed.baseDelayMs * 2 ** exponent);
+  const jitter = base * parsed.jitterRatio * (random() * 2 - 1);
+  return Math.max(0, Math.min(parsed.maxDelayMs, Math.round(base + jitter)));
+}
+
 export * from './request-dedupe.js';

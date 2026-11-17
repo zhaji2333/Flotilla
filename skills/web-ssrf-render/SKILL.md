@@ -42,7 +42,7 @@ description: SSRF/内网探测/云元数据/服务端无头浏览器渲染专项
 | `knowledge/ssrf-internal-network-05-五、绕过技术.md` | 绕过技术 | 0.4KB |
 | `knowledge/dns-rebinding-test.md` | DNS 重绑定 | 0.3KB |
 
-其余 3 个知识块（按标题搜，禁止通读）：`ls knowledge/`；原始清单见 `../../../docs/MIGRATION.md`。
+其余 3 个知识块（按标题搜，禁止通读）：`ls knowledge/`；原始清单见 `../MIGRATION.md`。
 
 ## 相关
 

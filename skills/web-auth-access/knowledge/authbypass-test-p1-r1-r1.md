@@ -13,13 +13,13 @@
 ## 承接
 
 > 来源：实战知识库（真实 SRC 战法沉淀，已并入 CkSKILLS_v2）。
-> 与 `rules/` 冲突时以 rules 为准；CORS 按 `../../../../rules/20-min-harm.md` 与团队取舍不主动挖。
+> 与 `rules/` 冲突时以 rules 为准；CORS 按 `../../../rules/20-min-harm.md` 与团队取舍不主动挖。
 
 # authbypass-authentication-flaws
 
-打开是登录页 / SSO → 表单壳听 `../../../../rules/60-scope-iteration.md` §4.1.1：找业务面；别按本文件从头跑字典 / 验证码 / 无限试密。  
-发会话、重置、改绑、换票、2FA 按本文件 + `../../../../rules/60-scope-iteration.md` §4.2.2 探针打，不要因为 §4.1.1 整摊跳过。表是每站下限，不是只准打这几枪。  
-中间件裸默认口可一眼。滑块 / 发码 / 没进号的试密 → 转认证链，别停半截。写不写只认 `../../../../rules/40-evidence-report.md`。
+打开是登录页 / SSO → 表单壳听 `../../../rules/60-scope-iteration.md` §4.1.1：找业务面；别按本文件从头跑字典 / 验证码 / 无限试密。  
+发会话、重置、改绑、换票、2FA 按本文件 + `../../../rules/60-scope-iteration.md` §4.2.2 探针打，不要因为 §4.1.1 整摊跳过。表是每站下限，不是只准打这几枪。  
+中间件裸默认口可一眼。滑块 / 发码 / 没进号的试密 → 转认证链，别停半截。写不写只认 `../../../rules/40-evidence-report.md`。
 英文字典/验证码 20 法/重置矩阵已砍；战法索引指针用标题搜。Host 毒重置见 `../../web-api-protocol/knowledge/http-host-header-test.md`。扫码登录 CSRF 见 `../../web-xss-frontend/knowledge/csrf-test.md` §18。
 
 # Authentication Bypass

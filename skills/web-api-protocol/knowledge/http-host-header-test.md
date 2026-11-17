@@ -1,7 +1,7 @@
 > 来源：实战知识库（真实 SRC 战法沉淀，已并入 CkSKILLS_v2）。
-> 与 `rules/` 冲突时以 rules 为准；CORS 按 `../../../../rules/20-min-harm.md` 与团队取舍不主动挖。
+> 与 `rules/` 冲突时以 rules 为准；CORS 按 `../../../rules/20-min-harm.md` 与团队取舍不主动挖。
 
-> 战法索引「Host 毒重置信」在 §2 下，用标题搜即可。有重置/激活口就打 Host / XFH（`../../../../rules/60-scope-iteration.md` §4.2.2），不必先看见邮件长什么样。没这类口，不要拿随机页空改 Host 来勾表。
+> 战法索引「Host 毒重置信」在 §2 下，用标题搜即可。有重置/激活口就打 Host / XFH（`../../../rules/60-scope-iteration.md` §4.2.2），不必先看见邮件长什么样。没这类口，不要拿随机页空改 Host 来勾表。
 
 # http-host-header
 
@@ -27,7 +27,7 @@ The Host header is used by web applications and infrastructure for:
 
 ### Host 毒重置信（战法索引有指针）
 
-认：清单有重置 / 激活 / 邀请发信口（`../../../../rules/60-scope-iteration.md` §4.2.2）。不必先看见邮件里是不是用 Host 拼的。
+认：清单有重置 / 激活 / 邀请发信口（`../../../rules/60-scope-iteration.md` §4.2.2）。不必先看见邮件里是不是用 Host 拼的。
 
 打：
 

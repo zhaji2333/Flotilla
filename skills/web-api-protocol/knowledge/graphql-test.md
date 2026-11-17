@@ -1,9 +1,9 @@
 > 来源：实战知识库（真实 SRC 战法沉淀，已并入 CkSKILLS_v2）。
-> 与 `rules/` 冲突时以 rules 为准；CORS 按 `../../../../rules/20-min-harm.md` 与团队取舍不主动挖。
+> 与 `rules/` 冲突时以 rules 为准；CORS 按 `../../../rules/20-min-harm.md` 与团队取舍不主动挖。
 
 > 结构：上半原有是主线；下半补充加深。战法索引没点名时按现场：自省 / 越权 id / 注入 / 批量。不必整篇通读。
 >
-> 写不写只认 `../../../../rules/40-evidence-report.md`。Introspection 仅 schema、无敏感字段 → 继续挖字段/越权/注入。
+> 写不写只认 `../../../rules/40-evidence-report.md`。Introspection 仅 schema、无敏感字段 → 继续挖字段/越权/注入。
 
 ## 一、原有知识库
 

@@ -211,6 +211,21 @@ async function runTask(claimed: ClaimedTask): Promise<void> {
         tasks: priorWork.tasks,
       }).catch(() => undefined);
     }
+    const handoff = process.env.V102_TASK_HANDOFF === '1'
+      ? await dispatcher.getHandoffDigest(claimed.missionId, claimed.taskId).catch(error => {
+          log(`handoff digest unavailable for task ${claimed.taskId}: ${String(error)}`);
+          return null;
+        })
+      : null;
+    if (handoff) {
+      log(`injecting task handoff digest v${handoff.version} (${handoff.digest.length} chars) into task ${claimed.taskId}`);
+      await dispatcher.recordEvent(claimed.missionId, 'task.handoff_injected', claimed.taskId, {
+        version: handoff.version,
+        chars: handoff.digest.length,
+        sourceTaskId: handoff.taskId,
+      }).catch(() => undefined);
+    }
+    const priorWorkDigest = [handoff?.digest, priorWork?.digest].filter((value): value is string => Boolean(value)).join('\n\n');
     const modelConfig = await dispatcher.getModelConfig().catch(error => {
       log(`model config lookup failed, using env route: ${String(error)}`);
       return null;
@@ -265,7 +280,7 @@ async function runTask(claimed: ClaimedTask): Promise<void> {
       durableRecovery,
       hints.map(hint => hintLine(hint)),
       pullHints,
-      priorWork?.digest,
+      priorWorkDigest || undefined,
       missionBrief,
       missionContextPath,
       requestIndexPath,

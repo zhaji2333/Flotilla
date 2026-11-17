@@ -1,7 +1,7 @@
 > 来源：实战知识库（真实 SRC 战法沉淀，已并入 CkSKILLS_v2）。
-> 与 `rules/` 冲突时以 rules 为准；CORS 按 `../../../../rules/20-min-harm.md` 与团队取舍不主动挖。
+> 与 `rules/` 冲突时以 rules 为准；CORS 按 `../../../rules/20-min-harm.md` 与团队取舍不主动挖。
 
-> 写不写只认 `../../../../rules/40-evidence-report.md`。进站有会话时最低探针见 `../../../../rules/60-scope-iteration.md` §4.2.3（加字段、跳步、领取/库存/券并发一枪）。本篇是测法：支付/流程/验证码都测；发码/滑块没进号就转认证链，别停半截。
+> 写不写只认 `../../../rules/40-evidence-report.md`。进站有会话时最低探针见 `../../../rules/60-scope-iteration.md` §4.2.3（加字段、跳步、领取/库存/券并发一枪）。本篇是测法：支付/流程/验证码都测；发码/滑块没进号就转认证链，别停半截。
 > 战法索引「商家促销绑定」在 §1.4。英文 business-logic / CHECKLIST / METHODOLOGY / SCENARIOS 附件已砍；支付/流程/验证码测法仍在上半。
 
 ---

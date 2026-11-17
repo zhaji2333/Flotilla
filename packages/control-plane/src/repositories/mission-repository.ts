@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import { MissionTargetSchema, type GrantScope, type MissionTarget } from '@src-agent/contracts';
+import { MissionTargetSchema, deriveCoverageRequirements, type GrantScope, type MissionTarget } from '@src-agent/contracts';
 import { buildScopeForTarget } from '@src-agent/tool-gateway';
 import { getPool } from '../db';
 
@@ -26,6 +26,11 @@ export const CreateMissionSchema = z.object({
   scopeExtras: ScopeExtrasSchema.optional(),
   // Higher priority is claimed first (human-started / urgent missions).
   priority: z.number().min(0).max(1).optional(),
+  // v1.0.2 (ADR-0054): absolute deadline and reporting lead. Both are optional;
+  // a mission without a deadline keeps the legacy unbounded behavior.
+  deadlineAt: z.string().datetime().optional(),
+  reportingLeadMs: z.number().int().min(0).max(86_400_000).optional(),
+  searchPolicy: z.enum(['disabled', 'limited', 'allowed']).optional(),
   // Optional coverage gate. When set, mission completion requires the
   // observed asset graph to reach minRatio (and optionally an accepted finding).
   coverageGate: z.object({
@@ -132,11 +137,14 @@ export async function createMission(input: CreateMissionInput, options: { bootst
     // success_criteria remains the internal completion contract. The optional
     // coverage gate is explicit; absent means ADR-0012's done/aggregate rule.
     const mission = await client.query(
-      `INSERT INTO missions (name, state, grant_id, grant_version, target, objective, success_criteria)
-       VALUES ($1, 'pending', $2, 1, $3, $4, $5)
+      `INSERT INTO missions
+         (name, state, grant_id, grant_version, target, objective, success_criteria,
+          deadline_at, phase, reporting_lead_ms, search_policy)
+       VALUES ($1, 'pending', $2, 1, $3, $4, $5, $6, 'active', $7, $8)
        RETURNING id`,
       [name, grantId, JSON.stringify(target), input.objective,
-       JSON.stringify(input.coverageGate ? { coverageGate: input.coverageGate } : {})],
+       JSON.stringify(input.coverageGate ? { coverageGate: input.coverageGate } : {}),
+       input.deadlineAt ?? null, input.reportingLeadMs ?? 900_000, input.searchPolicy ?? 'limited'],
     );
     const missionId = String(mission.rows[0].id);
     const task = await client.query(
@@ -150,6 +158,16 @@ export async function createMission(input: CreateMissionInput, options: { bootst
        VALUES ($1, 'mission.created', $2, $3)`,
       [missionId, missionId, JSON.stringify({ target, objective: input.objective, scope })],
     );
+    // v1.0.2 coverage invariant (ADR-0054): seed one requirement per authorized
+    // target/attack surface. Rows are additive and only used by the Planner gate.
+    for (const requirement of deriveCoverageRequirements(target)) {
+      await client.query(
+        `INSERT INTO coverage_requirements (mission_id, target_ref, attack_surface, status)
+         VALUES ($1, $2, $3, 'pending')
+         ON CONFLICT (mission_id, target_ref, attack_surface) DO NOTHING`,
+        [missionId, requirement.targetRef, requirement.attackSurface],
+      );
+    }
     await client.query(
       `INSERT INTO events (mission_id, event_type, aggregate_id, payload)
        VALUES ($1, 'task.created', $2, $3)`,

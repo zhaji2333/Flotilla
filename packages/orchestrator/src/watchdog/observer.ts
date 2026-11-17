@@ -7,6 +7,8 @@ import { evaluateWatchdog, type WatchdogObservation } from '../scheduler/watchdo
 // the dispatcher write path; it never touches a target or runs a Worker.
 
 export interface WatchdogCollectorConfig {
+  /** v1.0.2 (ADR-0054): observe (default) never cancels/park by itself. */
+  mode: 'observe' | 'active';
   windowMinutes: number;
   duplicateThreshold: number;
   noProgressMinutes: number;
@@ -15,6 +17,7 @@ export interface WatchdogCollectorConfig {
 
 export function watchdogConfigFromEnv(env: NodeJS.ProcessEnv = process.env): WatchdogCollectorConfig {
   return {
+    mode: env.WATCHDOG_MODE === 'active' ? 'active' : 'observe',
     windowMinutes: Math.max(1, Number(env.WATCHDOG_WINDOW_MINUTES || 10)),
     duplicateThreshold: Math.max(1, Number(env.WATCHDOG_DUPLICATE_THRESHOLD || 10)),
     noProgressMinutes: Math.max(1, Number(env.WATCHDOG_NO_PROGRESS_MINUTES || 15)),

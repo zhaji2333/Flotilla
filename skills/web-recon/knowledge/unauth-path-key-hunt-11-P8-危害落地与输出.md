@@ -6,6 +6,6 @@
 - ID 类：先解决 ID 从哪来（公开格式、C 端自己的单、枚举）。没有合法 ID 不能宣称可打任意用户。
 - 复现用 **curl**，证明请求无登录 Cookie。
 - 覆盖度必填：✅已测 / ❌未测 / 🔄变种 / 💡关联；同步写进线索板第 7 节。
-- 评估表走 `../../../../rules/15-hunting-mindset.md` 六问。成稿按 `../../../../rules/40-evidence-report.md`（只读板上「已证实」行）。
+- 评估表走 `../../../rules/15-hunting-mindset.md` 六问。成稿按 `../../../rules/40-evidence-report.md`（只读板上「已证实」行）。
 
 ---

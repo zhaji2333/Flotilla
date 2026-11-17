@@ -43,7 +43,7 @@ description: AI/LLM/Agent 安全专项。当目标是 Chatbot/RAG/AI 助手、AI
 | `knowledge/ai-llm-agent-security-04-三、提示词注入-Prompt-Injection-——-LLM01.md` | LLM 提示词注入全景 | 8.1KB |
 | `knowledge/cloud-ide-codex-rce-chain.md` | 云 IDE/Codex RCE 链 | 7.9KB |
 
-其余 44 个知识块（按标题搜，禁止通读）：`ls knowledge/`；原始清单见 `../../../docs/MIGRATION.md`。
+其余 44 个知识块（按标题搜，禁止通读）：`ls knowledge/`；原始清单见 `../MIGRATION.md`。
 
 ## 相关
 

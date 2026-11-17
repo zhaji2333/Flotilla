@@ -144,6 +144,10 @@ mission 不再由“产物数达标”决定完成：
       "target": { "type": "url", "value": "http://192.168.1.10" },
       "objective": "Find all flags",
       "workerId": "worker-abc",
+      "phase": "active",
+      "deadlineAt": null,
+      "reportingLeadMs": 900000,
+      "searchPolicy": "limited",
       "findingsCount": 3,
       "createdAt": "2026-11-07T08:00:00.000Z",
       "completedAt": null
@@ -167,6 +171,9 @@ mission 不再由“产物数达标”决定完成：
   "methodology": "optional guidance",
   "scopeExtras": { "ips": ["192.168.79.165/32"] },
   "priority": 0.7,
+  "deadlineAt": "2026-11-17T12:00:00.000Z",
+  "reportingLeadMs": 900000,
+  "searchPolicy": "limited",
   "coverageGate": { "enabled": true, "minRatio": 1, "requireAcceptedFinding": false }
 }
 ```
@@ -181,6 +188,9 @@ mission 不再由“产物数达标”决定完成：
 | `maxWallClockMs` | 否 | 0–7,200,000，0=不限；默认 1,200,000（20min） |
 | `methodology` | 否 | ≤8000 字符 |
 | `scopeExtras` | 否 | 额外授权范围；域名后缀/IP/URL 前缀 |
+| `deadlineAt` | 否 | ISO 时间；v1.0.2 mission 绝对截止时间（ADR-0054） |
+| `reportingLeadMs` | 否 | 截止前多久进入 reporting，默认 900000 |
+| `searchPolicy` | 否 | `disabled` / `limited`(默认) / `allowed`；`web_search` DLP |
 | `priority` | 否 | 0–1，默认 0.5；越大越先领取 |
 | `coverageGate` | 否 | 可选完成闸：`enabled`/`minRatio`(0–1)/`requireAcceptedFinding`；资产覆盖未达标时 mission 落 failed |
 
@@ -205,6 +215,10 @@ mission 不再由“产物数达标”决定完成：
     "target": { "type": "url", "value": "http://..." },
     "objective": "...",
     "workerId": "worker-1",
+    "phase": "active",
+    "deadlineAt": null,
+    "reportingLeadMs": 900000,
+    "searchPolicy": "limited",
     "findingsCount": 2,
     "failureClass": null,
     "checkpoint": { "pausedAt": "...", "openTasks": 1 },
@@ -214,6 +228,7 @@ mission 不再由“产物数达标”决定完成：
     "tasks": [
       {
         "id": "uuid", "state": "running", "type": "bootstrap", "angle": null,
+        "disposition": null,
         "dependsOn": [], "attempt": 1, "priority": 0.5,
         "lastError": null, "plannerRunId": null,
         "createdAt": "...", "completedAt": null,
@@ -1071,3 +1086,26 @@ Session mutation 必须带 `x-csrf-token`；Cookie 模式不使用 `Authorizatio
 - `POST /api/model-configs/test`：测试未保存的 baseUrl/apiKey/modelName；`POST /api/model-configs/:id/test`：测试已保存配置（可覆盖字段）。
 - 两者都返回 200 + `{ok, latencyMs, httpStatus, model, reply, usage, error, errorCode, traceId}`；`ok:false` 即连接失败。
 - 仅 admin；key 不回显、不落日志、不写审计。
+
+### 4.36 GET /api/missions/:id/coverage（v1.0.2，ADR-0054）
+
+返回该 mission 的授权覆盖要求（由 target/attack surface 派生，Planner 与报告共用）。
+
+```json
+{
+  "requirements": [
+    {
+      "id": "uuid",
+      "missionId": "uuid",
+      "targetRef": "target:http://192.168.1.10",
+      "attackSurface": "web",
+      "status": "pending",
+      "evidenceRef": null,
+      "disposition": null,
+      "updatedAt": "2026-11-17T08:00:00.000Z"
+    }
+  ]
+}
+```
+
+`status`：`pending | covered | negative | dispositioned`。`V102_PLANNER_COVERAGE_INVARIANT=1` 时 Planner 会为 pending 项自动补一个 generic assessment task。

@@ -200,6 +200,7 @@ export async function cancelTask(
     }
     await client.query(
       `UPDATE tasks SET state = 'cancelled', completed_at = now(), last_error = $2,
+       disposition = COALESCE(disposition, 'cancelled'),
        lease_owner = NULL, lease_expires_at = NULL WHERE id = $1`,
       [taskId, reason],
     );

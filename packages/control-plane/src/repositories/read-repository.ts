@@ -11,6 +11,11 @@ export interface MissionListItem {
   target: MissionTarget | null;
   objective: string | null;
   workerId: string | null;
+  /** v1.0.2 reporting lifecycle (ADR-0054). */
+  phase: 'active' | 'reporting' | 'closed';
+  deadlineAt: string | null;
+  reportingLeadMs: number;
+  searchPolicy: 'disabled' | 'limited' | 'allowed';
   findingsCount: number;
   createdAt: string;
   completedAt: string | null;
@@ -50,6 +55,8 @@ export interface TaskListItem {
   id: string;
   state: string;
   type: string;
+  /** v1.0.2 terminal disposition (null while the task is not terminal). */
+  disposition: string | null;
   /** Optional P3-B4 angle (web/api/infra/binary). */
   angle: string | null;
   dependsOn: string[];
@@ -141,6 +148,7 @@ export interface EvidenceRow {
 export async function listMissions(limit = 50): Promise<MissionListItem[]> {
   const result = await getPool().query(
     `SELECT m.id, m.name, m.state, m.target, m.objective, m.worker_id, m.created_at, m.completed_at,
+            m.phase, m.deadline_at, m.reporting_lead_ms, m.search_policy,
             (SELECT count(*)::int FROM findings f WHERE f.mission_id = m.id) AS findings_count
      FROM missions m
      ORDER BY m.created_at DESC
@@ -155,6 +163,7 @@ export async function getMission(id: string): Promise<MissionDetail | null> {
   const result = await pool.query(
     `SELECT m.id, m.name, m.state, m.target, m.objective, m.worker_id, m.created_at, m.completed_at,
             m.failure_class, m.checkpoint, m.paused_at,
+            m.phase, m.deadline_at, m.reporting_lead_ms, m.search_policy,
             (SELECT count(*)::int FROM findings f WHERE f.mission_id = m.id) AS findings_count
      FROM missions m WHERE m.id = $1`,
     [id],
@@ -164,7 +173,7 @@ export async function getMission(id: string): Promise<MissionDetail | null> {
   const [tasks, todo, triggers, hints, approvals, plannerRuns] = await Promise.all([
     pool.query(
       `SELECT id, state, type, angle, depends_on, attempt, priority, last_error, planner_run_id,
-              created_at, completed_at, result
+              disposition, created_at, completed_at, result
        FROM tasks WHERE mission_id = $1 ORDER BY created_at ASC`,
       [id],
     ),
@@ -183,6 +192,7 @@ export async function getMission(id: string): Promise<MissionDetail | null> {
       id: String(task.id),
       state: String(task.state),
       type: String(task.type),
+      disposition: task.disposition ? String(task.disposition) : null,
       angle: task.angle ? String(task.angle) : null,
       dependsOn: ((task.depends_on ?? []) as string[]).map(String),
       attempt: Number(task.attempt ?? 0),
@@ -860,6 +870,10 @@ function rowToMission(row: Record<string, unknown>): MissionListItem {
     target: (row.target as MissionTarget | null) ?? null,
     objective: (row.objective as string | null) ?? null,
     workerId: (row.worker_id as string | null) ?? null,
+    phase: (String(row.phase ?? 'active') as 'active' | 'reporting' | 'closed'),
+    deadlineAt: row.deadline_at ? new Date(row.deadline_at as string).toISOString() : null,
+    reportingLeadMs: Number(row.reporting_lead_ms ?? 900_000),
+    searchPolicy: (String(row.search_policy ?? 'limited') as 'disabled' | 'limited' | 'allowed'),
     findingsCount: Number(row.findings_count ?? 0),
     createdAt: new Date(row.created_at as string).toISOString(),
     completedAt: row.completed_at ? new Date(row.completed_at as string).toISOString() : null,

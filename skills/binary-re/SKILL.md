@@ -42,7 +42,7 @@ description: 二进制/固件/ELF/PE/内存破坏逆向专项。当目标是 PE/
 | `knowledge/windows-reverse-engineering-04-四、动态分析要点.md` | 动态分析 | 1.1KB |
 | `knowledge/windows-reverse-engineering-10-十、反调试-反虚拟机对抗.md` | 反调试对抗 | 1.0KB |
 
-其余 8 个知识块（按标题搜，禁止通读）：`ls knowledge/`；原始清单见 `../../../docs/MIGRATION.md`。
+其余 8 个知识块（按标题搜，禁止通读）：`ls knowledge/`；原始清单见 `../MIGRATION.md`。
 
 ## 相关
 

@@ -1,7 +1,7 @@
 import http from 'node:http';
 import { createPool } from '../db/pool.js';
 import { applySchema } from '../db/schema.js';
-import { getActiveModelConfig, getMissionTraceSummary, buildMissionContext, upsertRequestIndex, getRuntimeSettings, hasUnconfirmedTaskActions } from '@src-agent/control-plane';
+import { getActiveModelConfig, getMissionTraceSummary, buildMissionContext, upsertRequestIndex, getRuntimeSettings, hasUnconfirmedTaskActions, getLatestHandoffDigestForMission } from '@src-agent/control-plane';
 import {
   FencingError,
   claimTask,
@@ -191,6 +191,13 @@ async function handle(request: http.IncomingMessage, response: http.ServerRespon
         requestIndexTtlMinutes: settings['worker.requestDedupeTtlMinutes'],
       });
       return json(response, 200, { context });
+    }
+    case '/internal/dispatch/handoff-digest': {
+      const handoff = await getLatestHandoffDigestForMission(
+        stringField(raw, 'missionId'),
+        stringField(raw, 'taskId'),
+      );
+      return json(response, 200, { handoff });
     }
     case '/internal/dispatch/prior-work': {
       const summary = await getMissionTraceSummary(pool, stringField(raw, 'missionId'), {

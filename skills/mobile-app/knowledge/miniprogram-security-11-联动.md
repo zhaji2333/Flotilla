@@ -6,4 +6,4 @@
 - 支付/竞态 → `business-logic-race`
 - 后端域名/appid/appsecret 提取 → `recon-js-analysis`
 - rich-text/AI 输出渲染 XSS → `xss-frontend-security`（四）+ `ai-llm-agent-security`（3.6）
-- 正式报告 → 按 `../../../../rules/40-evidence-report.md`
+- 正式报告 → 按 `../../../rules/40-evidence-report.md`

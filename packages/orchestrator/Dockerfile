@@ -89,6 +89,14 @@ COPY packages/orchestrator/tsconfig.json packages/orchestrator/
 # CkSKILLS packs: loaded on demand by the Harness skill tool through the
 # skill-filesystem plugin (customSkillDirs=/app/skills, see harness/patch.ts).
 COPY skills /app/skills
+# CkSKILLS v2.1 data layers: the packs reference these with repo-root-relative
+# paths (../../kb/..., ../../rules/..., ../../templates/...) and `rules/55-kb-usage.md`
+# requires kb/ to be readable at /app/kb. kb/ is ~40MB of CVE/dictionary/payload
+# data, so this grows the worker image by that amount (compressed/registry layer
+# size is smaller; the packs themselves stay under the 8MB skills/ budget).
+COPY kb /app/kb
+COPY rules /app/rules
+COPY templates /app/templates
 
 # Harness loads plugins as plain ESM JavaScript; bundle the SRC-Agent plugin
 # (its tool/gateway dependencies are TypeScript workspace packages) so the

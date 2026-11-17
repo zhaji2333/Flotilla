@@ -7,6 +7,7 @@ function task(id: string, dependsOn: string[] = [], state: Task['state'] = 'prop
     id,
     state,
     type: 'intent',
+    disposition: null,
     angle: null,
     dependsOn,
     attempt: 1,

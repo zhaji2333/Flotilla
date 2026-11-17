@@ -43,15 +43,25 @@ export interface MissionListItem {
   target: MissionTarget | null;
   objective: string | null;
   workerId: string | null;
+  /** v1.0.2 reporting lifecycle (ADR-0054). */
+  phase: MissionPhase;
+  deadlineAt: string | null;
+  reportingLeadMs: number;
+  searchPolicy: SearchPolicy;
   findingsCount: number;
   createdAt: string;
   completedAt: string | null;
 }
 
+export type MissionPhase = 'active' | 'reporting' | 'closed';
+export type SearchPolicy = 'disabled' | 'limited' | 'allowed';
+
 export interface Task {
   id: string;
   state: TaskState;
   type: string;
+  /** v1.0.2 terminal disposition (null while not terminal). */
+  disposition: string | null;
   angle: TaskAngle | null;
   dependsOn: string[];
   attempt: number;

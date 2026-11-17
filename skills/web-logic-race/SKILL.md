@@ -43,7 +43,7 @@ description: 业务逻辑与并发竞态专项。当出现支付/下单/退款/�
 | `knowledge/race-condition-test.md` | 竞态实战大全 | 0.7KB |
 | `knowledge/business-logic-race-02-二、支付-资金类场景表-全景.md` | 资金场景表 | 0.9KB |
 
-其余 6 个知识块（按标题搜，禁止通读）：`ls knowledge/`；原始清单见 `../../../docs/MIGRATION.md`。
+其余 6 个知识块（按标题搜，禁止通读）：`ls knowledge/`；原始清单见 `../MIGRATION.md`。
 
 ## 相关
 

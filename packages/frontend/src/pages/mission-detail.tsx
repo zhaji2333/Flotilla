@@ -93,6 +93,8 @@ export function MissionDetail() {
 
   const mission = missionState.data;
   const openTasks = mission.tasks.filter(task => !TERMINAL_TASK_STATES.includes(task.state));
+  const phaseLabel = mission.phase === 'reporting' ? '收尾中 (reporting)' : mission.phase === 'closed' ? '已关闭 (closed)' : '执行中 (active)';
+  const deadlineLabel = mission.deadlineAt ? formatDate(mission.deadlineAt) : '无截止时间';
 
   return (
     <div className="mx-auto w-full max-w-[1500px]">
@@ -126,6 +128,8 @@ export function MissionDetail() {
               <span className="chip cursor-default">发现 {mission.findingsCount}</span>
               <span className="chip cursor-default">任务 {mission.tasks.length}</span>
               <span className="chip cursor-default">开放 {openTasks.length}</span>
+              <span className="chip cursor-default">阶段 {phaseLabel}</span>
+              <span className="chip cursor-default">截止 {deadlineLabel}</span>
               {mission.failureClass ? <span className="chip cursor-default text-ember">失败原因 {failureClassLabel(mission.failureClass)}</span> : null}
             </div>
           </div>
@@ -153,6 +157,8 @@ export function MissionDetail() {
       {/* summary strip */}
       <div className="grid gap-px border border-line bg-line sm:grid-cols-2 lg:grid-cols-4">
         <SummaryCell label="目标" value={missionTargetLabel(mission.target)} mono />
+        <SummaryCell label="阶段" value={phaseLabel} />
+        <SummaryCell label="截止时间" value={deadlineLabel} />
         <SummaryCell label="创建时间" value={formatDate(mission.createdAt)} />
         <SummaryCell label="完成时间" value={formatDate(mission.completedAt)} />
         <SummaryCell label="checkpoint" value={`${Object.keys(mission.checkpoint).length} keys${mission.pausedAt ? ' · paused' : ''}`} />

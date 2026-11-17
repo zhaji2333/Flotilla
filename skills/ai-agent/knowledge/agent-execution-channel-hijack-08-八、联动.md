@@ -5,4 +5,4 @@
 - 对话被拒、要绕护栏 → `agent-prompt-injection-bypass`
 - 已有执行 → `agent-sandbox-takeover`（七大危害面）
 - 签名/JS → `recon-js-analysis`；越权定级 → `auth-access-control`
-- 成稿 → 按 `../../../../rules/40-evidence-report.md`
+- 成稿 → 按 `../../../rules/40-evidence-report.md`

@@ -7,9 +7,13 @@ import {
   type MissionSummary,
   type MissionTarget,
   type ReportFinding,
+  deriveTaskDisposition,
   type TaskState,
 } from '@src-agent/contracts';
+import { buildHandoffFromReport, computeNextRetryAt } from '@src-agent/control-plane';
 import { evaluateReadiness } from '../scheduler/readiness.js';
+import { isTaskBlockedByPhase, phaseCancelDisposition } from '../scheduler/mission-phase.js';
+import { evaluatePreflight, preflightDisposition } from '../scheduler/preflight.js';
 import { evaluateCoverageGate, type CoverageGateResult } from './coverage-gate.js';
 import { MAX_TASK_ATTEMPTS, stateAfterFailedReport } from '../scheduler/state-machine.js';
 import { recordFindingTriggers } from './trigger-repository.js';
@@ -175,7 +179,7 @@ export async function claimTask(pool: Pool, workerId: string, missionId?: string
 
   const details = await pool.query(
     `
-      SELECT m.name, m.target, m.objective, g.scope
+      SELECT m.name, m.target, m.objective, m.phase, m.deadline_at, g.scope
       FROM missions m
       LEFT JOIN grants g ON g.id = m.grant_id AND g.version = m.grant_version
       WHERE m.id = $1
@@ -189,6 +193,55 @@ export async function claimTask(pool: Pool, workerId: string, missionId?: string
   const scope = GrantScopeSchema.parse(mission.scope ?? {});
   const budget = BudgetSchema.parse(task.budget);
   const leaseExpiresAt = new Date(task.lease_expires_at).toISOString();
+
+  // v1.0.2 preflight (ADR-0054): stop the task before any target traffic when
+  // the mission is closed/expired or its grant disappeared. Flag-gated so
+  // v1.0.1 behavior stays available (V102_PREFLIGHT_STRICT=0).
+  if (process.env.V102_PREFLIGHT_STRICT === '1') {
+    const preflight = evaluatePreflight({
+      phase: mission.phase ?? 'active',
+      deadlineAt: mission.deadline_at ? new Date(mission.deadline_at) : null,
+      now: new Date(),
+      scopePresent: Boolean(mission.scope),
+    });
+    await pool.query(
+      `INSERT INTO task_preflight_checks
+         (mission_id, task_id, phase_ok, deadline_ok, scope_ok, auth_ok,
+          target_version, credential_version, pending_destructive, decision, reason, evidence_ref)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+      [
+        task.mission_id,
+        task.id,
+        preflight.phaseOk,
+        preflight.deadlineOk,
+        preflight.scopeOk,
+        preflight.authOk,
+        preflight.targetVersion,
+        preflight.credentialVersion,
+        preflight.pendingDestructiveApproval,
+        preflight.decision,
+        preflight.reason,
+        preflight.evidenceRef,
+      ],
+    );
+    if (preflight.decision !== 'proceed') {
+      const disposition = preflightDisposition(preflight);
+      await pool.query(
+        `UPDATE tasks SET state = 'cancelled', disposition = $3, preflight_status = 'failed',
+                last_error = $4, completed_at = now(), lease_owner = NULL, lease_expires_at = NULL
+          WHERE id = $1 AND state IN ('leased', 'running')`,
+        [task.id, task.mission_id, disposition, preflight.reason ?? 'preflight failed'],
+      );
+      await recordEvent(pool, task.mission_id, 'task.preflight_failed', task.id, {
+        decision: preflight.decision,
+        reason: preflight.reason,
+        disposition,
+      });
+      await finalizeMissionIfNoOpenTasks(pool, task.mission_id, 'preflight failed');
+      return null;
+    }
+    await pool.query(`UPDATE tasks SET preflight_status = 'passed' WHERE id = $1`, [task.id]);
+  }
 
   await pool.query(`UPDATE missions SET state = 'running', worker_id = $2, updated_at = now() WHERE id = $1`, [
     task.mission_id,
@@ -327,9 +380,28 @@ export interface SchedulerTickResult {
 }
 
 export async function schedulerTick(pool: Pool): Promise<SchedulerTickResult> {
+  // v1.0.2 phase transitions (ADR-0054): reporting starts `reporting_lead_ms`
+  // before the deadline; the deadline hard-stops new attack work.
+  if (process.env.V102_MISSION_DEADLINE !== '0') try {
+    await pool.query(
+      `UPDATE missions SET phase = 'reporting', updated_at = now()
+        WHERE phase = 'active' AND deadline_at IS NOT NULL
+          AND deadline_at - (reporting_lead_ms * interval '1 millisecond') <= now()`,
+    );
+    await pool.query(
+      `UPDATE missions SET phase = 'closed', updated_at = now()
+        WHERE phase IN ('active', 'reporting') AND deadline_at IS NOT NULL AND deadline_at <= now()`,
+    );
+  } catch (error) {
+    // The phase columns arrive with migration 0013; during a rolling upgrade an
+    // old dispatcher may still see the previous schema. Keep v1.0.1 behavior.
+    if (!(error instanceof Error) || !/column .* does not exist/.test(error.message)) throw error;
+  }
+
   const expired = await pool.query(
     `UPDATE tasks
      SET state = CASE WHEN attempt >= $1 THEN 'exhausted' ELSE 'retry_wait' END,
+         disposition = CASE WHEN attempt >= $1 THEN COALESCE(disposition, 'exhausted') ELSE disposition END,
          retry_after = CASE WHEN attempt >= $1 THEN NULL ELSE now() + ($2::int * interval '1 millisecond') END,
          last_error = COALESCE(last_error, 'lease expired'),
          lease_owner = NULL,
@@ -355,6 +427,7 @@ export async function schedulerTick(pool: Pool): Promise<SchedulerTickResult> {
   const proposal = await pool.query(
     `SELECT t.id, t.mission_id, t.type, t.state, t.depends_on, t.attempt, t.fingerprint,
             m.state AS mission_state,
+            m.phase AS mission_phase,
             (SELECT COALESCE(jsonb_object_agg(d.id::text, d.state), '{}'::jsonb)
                FROM tasks d WHERE d.id = ANY(t.depends_on)) AS dependency_states,
             EXISTS (
@@ -383,6 +456,26 @@ export async function schedulerTick(pool: Pool): Promise<SchedulerTickResult> {
   let blocked = 0;
   let writeBlocked = 0;
   for (const row of proposal.rows) {
+    const missionPhase = String(row.mission_phase ?? 'active');
+    if (process.env.V102_MISSION_DEADLINE !== '0' && isTaskBlockedByPhase(missionPhase, String(row.type))) {
+      const disposition = phaseCancelDisposition(missionPhase);
+      const cancelled = await pool.query(
+        `UPDATE tasks
+            SET state = 'cancelled', disposition = $3, retry_after = NULL,
+                last_error = $4, lease_owner = NULL, lease_expires_at = NULL
+          WHERE id = $1 AND state = $2 RETURNING id`,
+        [row.id, row.state, disposition, `mission_${missionPhase}_phase`],
+      );
+      if (cancelled.rowCount === 0) continue;
+      blocked += 1;
+      await recordEvent(pool, String(row.mission_id), 'task.cancelled', String(row.id), {
+        reason: `mission ${missionPhase} phase`,
+        from: row.state,
+        disposition,
+      });
+      await finalizeMissionIfNoOpenTasks(pool, String(row.mission_id), `mission ${missionPhase} phase`);
+      continue;
+    }
     const dependencyStates = (row.dependency_states ?? {}) as Record<string, TaskState>;
     const verdict = evaluateReadiness({
       missionState: String(row.mission_state),
@@ -446,6 +539,23 @@ export async function finalizeMissionState(
   db: Pick<Pool, 'query'> | Pick<PoolClient, 'query'>,
   missionId: string,
 ): Promise<MissionFinalState> {
+  // v1.0.2 no-silent-abandonment: every terminal task gets an auditable
+  // disposition. Legacy rows are derived from their terminal state; an
+  // explicit disposition set by a controller path is never overwritten.
+  if (process.env.V102_TASK_DISPOSITION !== '0') {
+    await db.query(
+      `UPDATE tasks SET disposition = CASE
+         WHEN state IN ('done','verified') THEN 'completed'
+         WHEN state = 'exhausted' THEN 'exhausted'
+         WHEN state = 'blocked' THEN 'blocked'
+         WHEN state IN ('cancelled','stale','handed_back') THEN 'cancelled'
+         ELSE NULL END
+       WHERE mission_id = $1
+         AND state IN ('done','verified','exhausted','blocked','cancelled','stale','handed_back')
+         AND disposition IS NULL`,
+      [missionId],
+    );
+  }
   const open = await db.query(
     `SELECT count(*)::int AS count FROM tasks
      WHERE mission_id = $1
@@ -501,6 +611,37 @@ export async function finalizeMissionState(
         maxSteps: Math.max(1, Number(process.env.SUMMARY_MAX_STEPS || 60)),
         maxWallClockMs: Math.max(10_000, Number(process.env.SUMMARY_WALL_CLOCK_MS || 300_000)),
       };
+      // v1.0.2 reporting endgame (ADR-0054): the report carries the coverage
+      // requirements and terminal dispositions so blockers are explicit.
+      const endgameEnabled = process.env.V102_REPORTING_ENDGAME !== '0';
+      const coverageRows = await db.query(
+        `SELECT target_ref, attack_surface, status, disposition
+           FROM coverage_requirements WHERE mission_id = $1
+          ORDER BY target_ref, attack_surface`,
+        [missionId],
+      ).catch(() => ({ rows: [] as Record<string, unknown>[] }));
+      const dispositionRows = await db.query(
+        `SELECT disposition, count(*)::int AS count FROM tasks
+          WHERE mission_id = $1 AND disposition IS NOT NULL GROUP BY disposition`,
+        [missionId],
+      ).catch(() => ({ rows: [] as Record<string, unknown>[] }));
+      const coverageBlockers = coverageRows.rows
+        .filter(row => String(row.status) === 'pending')
+        .map(row => ({ targetRef: String(row.target_ref), attackSurface: String(row.attack_surface) }));
+      const reportPayload = {
+        summary: true,
+        objective: 'Review mission coverage, gaps and missing evidence; produce a bounded summary. Report coverage blockers and dispositions explicitly.',
+        ...(endgameEnabled ? {
+        coverage: coverageRows.rows.map(row => ({
+          targetRef: String(row.target_ref),
+          attackSurface: String(row.attack_surface),
+          status: String(row.status),
+          disposition: row.disposition ? String(row.disposition) : null,
+        })),
+        coverageBlockers,
+        dispositions: Object.fromEntries(dispositionRows.rows.map(row => [String(row.disposition), Number(row.count)])),
+        } : {}),
+      };
       const task = await db.query(
         `INSERT INTO tasks (mission_id, type, state, grant_id, grant_version, budget, payload, priority)
          SELECT id, 'summary', 'proposed', grant_id, grant_version, $2::jsonb, $3::jsonb, 1
@@ -508,7 +649,7 @@ export async function finalizeMissionState(
         [
           missionId,
           JSON.stringify(summaryBudget),
-          JSON.stringify({ summary: true, objective: 'Review mission coverage, gaps and missing evidence; produce a bounded summary.' }),
+          JSON.stringify(reportPayload),
         ],
       );
       await db.query(
@@ -987,11 +1128,22 @@ export async function finishTask(
     } else {
       finalState = stateAfterFailedReport(input.attempt);
     }
-    await client.query(`UPDATE tasks SET state = $2, completed_at = now(), last_error = $3 WHERE id = $1`, [
-      input.taskId,
-      finalState,
-      input.failureClass ?? null,
-    ]);
+    const disposition = finalState === 'retry_wait' ? null : deriveTaskDisposition(finalState, input.failureClass);
+    // v1.0.2 retry governance (ADR-0054): failed reports wait for exponential
+    // backoff instead of being promoted again on the next scheduler tick.
+    const retryAfter = finalState === 'retry_wait' && process.env.V102_RETRY_BACKOFF === '1'
+      ? computeNextRetryAt(input.attempt, {
+          baseDelayMs: Number(process.env.V102_RETRY_BASE_MS || 30_000),
+          maxDelayMs: Number(process.env.V102_RETRY_MAX_MS || 900_000),
+        }).toISOString()
+      : null;
+    await client.query(
+      `UPDATE tasks SET state = $2, completed_at = now(), last_error = $3,
+              disposition = COALESCE(disposition, $4),
+              retry_after = COALESCE($5, retry_after)
+        WHERE id = $1`,
+      [input.taskId, finalState, input.failureClass ?? null, disposition, retryAfter],
+    );
     if (finalState === 'verified') {
       await client.query(`UPDATE tasks SET state = 'done' WHERE id = $1`, [input.taskId]);
     }
@@ -1004,6 +1156,36 @@ export async function finishTask(
         JSON.stringify({ workerId: input.workerId, status: input.status, failureClass: input.failureClass ?? null }),
       ],
     );
+
+    // v1.0.2 structured handoff (ADR-0054): derive a bounded, redacted contract
+    // from the report and store it for the next claim. No raw CoT or response
+    // bodies are included; credentials stay as references only.
+    if (process.env.V102_TASK_HANDOFF === '1' && finalState !== 'retry_wait') {
+      const missionInfo = await client.query(`SELECT target, grant_id, grant_version FROM missions WHERE id = $1`, [input.missionId]);
+      const missionTarget = (missionInfo.rows[0]?.target ?? {}) as { value?: string };
+      const handoff = buildHandoffFromReport({
+        targetRef: missionTarget.value ? `target:${missionTarget.value}` : null,
+        scopeRef: missionInfo.rows[0]?.grant_id
+          ? `grant:${String(missionInfo.rows[0].grant_id)}:v${String(missionInfo.rows[0].grant_version)}`
+          : null,
+        findings: persistedFindings.map(finding => ({ title: String(finding.title ?? '') })),
+        evidenceIds: [...evidenceIds.values()],
+        failureClass: input.failureClass ?? null,
+      });
+      await client.query(
+        `INSERT INTO task_handoffs (mission_id, task_id, attempt, handoff, redaction_version)
+         VALUES ($1, $2, $3, $4::jsonb, 1)`,
+        [input.missionId, input.taskId, input.attempt, JSON.stringify(handoff)],
+      );
+      await client.query(
+        `UPDATE tasks SET handoff_version = GREATEST(COALESCE(handoff_version, 0), $2) WHERE id = $1`,
+        [input.taskId, input.attempt],
+      );
+      await client.query(
+        `INSERT INTO events (mission_id, event_type, aggregate_id, payload) VALUES ($1,'task.handoff_recorded',$2,$3)`,
+        [input.missionId, input.taskId, JSON.stringify({ attempt: input.attempt, findings: handoff.confirmedFacts.length })],
+      );
+    }
 
     if (String(current.rows[0].type) === 'summary') {
       if (input.summary) {

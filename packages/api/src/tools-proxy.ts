@@ -1,6 +1,8 @@
 import http from 'node:http';
 import https from 'node:https';
+import { createHash } from 'node:crypto';
 import { getActiveModelConfig, getPool } from '@src-agent/control-plane';
+import { sanitizeSearchQuery, type SearchPolicy } from './search-policy.js';
 
 // ── Internal DeepSeek Search / Fetch proxy ──────────────────
 // The executor has only MODEL_PROXY_TOKEN; the provider key stays in the API.
@@ -51,6 +53,59 @@ function json(response: http.ServerResponse, status: number, body: unknown): voi
   response.end(text);
 }
 
+interface SearchBody { query?: string; count?: number; need_content?: boolean }
+
+function parseSearchBody(raw: Buffer): SearchBody | null {
+  try {
+    const parsed = JSON.parse(raw.toString('utf8')) as unknown;
+    return parsed && typeof parsed === 'object' ? (parsed as SearchBody) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function missionRow(missionId: string): Promise<{ search_policy?: string; target?: { value?: string } } | null> {
+  if (!/^[0-9a-f-]{36}$/i.test(missionId)) return null;
+  const result = await getPool().query(`SELECT search_policy, target FROM missions WHERE id = $1`, [missionId]).catch(() => null);
+  return result?.rows[0] ?? null;
+}
+
+async function missionSearchPolicy(missionId: string): Promise<SearchPolicy> {
+  const row = await missionRow(missionId);
+  const policy = row?.search_policy;
+  return policy === 'disabled' || policy === 'allowed' ? policy : 'limited';
+}
+
+async function missionTargetValue(missionId: string): Promise<string | null> {
+  const row = await missionRow(missionId);
+  return typeof row?.target?.value === 'string' ? row.target.value : null;
+}
+
+async function auditSearch(
+  missionId: string,
+  outcome: ReturnType<typeof sanitizeSearchQuery>,
+  original: string | undefined,
+): Promise<void> {
+  const originalHash = createHash('sha256').update(String(original ?? '')).digest('hex').slice(0, 16);
+  if (!/^[0-9a-f-]{36}$/i.test(missionId)) return;
+  await getPool().query(
+    `INSERT INTO events (mission_id, event_type, aggregate_id, payload)
+     VALUES ($1, 'search.policy', $2, $3)`,
+    [
+      missionId,
+      missionId,
+      JSON.stringify({
+        policy: outcome.policy,
+        ok: outcome.ok,
+        reason: outcome.reason,
+        masked: outcome.masked,
+        originalHash,
+        queryChars: outcome.query.length,
+      }),
+    ],
+  ).catch(() => undefined);
+}
+
 export async function handleToolsProxy(
   request: http.IncomingMessage,
   response: http.ServerResponse,
@@ -79,6 +134,28 @@ export async function handleToolsProxy(
     json(response, 503, { error: 'no default model configured for tools proxy' });
     return true;
   }
+  // v1.0.2 web_search DLP (ADR-0054): mission-level search_policy is enforced
+  // here because this is the only process that holds the provider key. Limited
+  // mode masks the authorized target/secrets; disabled mode never calls out.
+  if (kind === 'search' && process.env.V102_SEARCH_GOVERNANCE !== '0') {
+    const parsed = parseSearchBody(raw);
+    const missionId = typeof request.headers['x-src-mission-id'] === 'string' ? request.headers['x-src-mission-id'] : '';
+    const policy = await missionSearchPolicy(missionId);
+    const outcome = sanitizeSearchQuery(
+      String(parsed?.query ?? ''),
+      await missionTargetValue(missionId),
+      policy,
+    );
+    await auditSearch(missionId, outcome, parsed?.query);
+    if (!outcome.ok) {
+      json(response, 403, { error: outcome.reason ?? 'search blocked', policy: outcome.policy, masked: outcome.masked });
+      return true;
+    }
+    if (outcome.query !== String(parsed?.query ?? '')) {
+      raw = Buffer.from(JSON.stringify({ ...parsed, query: outcome.query }));
+    }
+  }
+
   const endpoint = deepseekToolUrl(config.baseUrl, kind);
   const target = new URL(endpoint);
   const transport = target.protocol === 'https:' ? https : http;

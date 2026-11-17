@@ -8,6 +8,7 @@ import type {
 import type { WatchdogTickResult } from '../repositories/watchdog-repository.js';
 import type {
   DispatcherFinishResponse,
+  DispatcherHandoffDigestResponse,
   DispatcherHintsResponse,
   DispatcherMissionContextResponse,
   DispatcherModelConfigResponse,
@@ -162,6 +163,12 @@ export class DispatcherClient {
     return (await this.call<DispatcherMissionContextResponse>('/internal/dispatch/mission-context', {
       missionId, taskId, maxBytes: options.maxBytes, briefMaxChars: options.briefMaxChars,
     }, 60_000)).context;
+  }
+
+  async getHandoffDigest(missionId: string, taskId: string): Promise<{ version: number; digest: string; taskId: string } | null> {
+    return (await this.call<DispatcherHandoffDigestResponse>('/internal/dispatch/handoff-digest', {
+      missionId, taskId,
+    }, 60_000)).handoff;
   }
 
   async getPriorWork(missionId: string, taskId: string, options: { taskLimit?: number; maxDigestChars?: number }): Promise<PriorWorkResult | null> {

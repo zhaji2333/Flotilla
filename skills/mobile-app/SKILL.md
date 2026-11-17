@@ -41,7 +41,7 @@ description: Android/APK/小程序/移动端逆向与组件安全专项。当目
 | `knowledge/apk-reversing-01-标准产物-交付标准.md` | 脱壳与产物 | 0.9KB |
 | `knowledge/miniprogram-security-01-快速开始-5-分钟出第一个接口-凭证.md` | 小程序快筛 | 0.5KB |
 
-其余 40 个知识块（按标题搜，禁止通读）：`ls knowledge/`；原始清单见 `../../../docs/MIGRATION.md`。
+其余 40 个知识块（按标题搜，禁止通读）：`ls knowledge/`；原始清单见 `../MIGRATION.md`。
 
 ## 相关
 

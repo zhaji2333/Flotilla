@@ -43,7 +43,7 @@ description: XSS（反射/存储/DOM/跳转型）/CSRF/Clickjacking/Markdown 渲
 | `knowledge/open-redirect-test.md` | 开放重定向 | 11.6KB |
 | `knowledge/xss-frontend-security-02-二、内容-社交类场景表-存储型重点.md` | 存储型场景表 | 1.0KB |
 
-其余 11 个知识块（按标题搜，禁止通读）：`ls knowledge/`；原始清单见 `../../../docs/MIGRATION.md`。
+其余 11 个知识块（按标题搜，禁止通读）：`ls knowledge/`；原始清单见 `../MIGRATION.md`。
 
 ## 相关
 

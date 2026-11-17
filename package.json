@@ -14,7 +14,8 @@
     "test:packages": "pnpm --recursive --if-present run test",
     "test": "pnpm run test:packages",
     "build": "pnpm --recursive --if-present run build",
-    "verify": "pnpm run lint && pnpm run typecheck && pnpm test && pnpm run build"
+    "verify": "pnpm run lint && pnpm run typecheck && pnpm test && pnpm run build",
+    "verify:kb": "python3 tools/kb_index.py --check"
   },
   "devDependencies": {
     "oxlint": "^1.15.0"

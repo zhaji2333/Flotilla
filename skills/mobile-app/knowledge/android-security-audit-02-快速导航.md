@@ -11,5 +11,5 @@
 | 发现漏洞，要动态验证 | → 四、动态验证 |
 | 构建 PoC App | → 五、PoC 开发规范 |
 | 判断发现值不值得报 | → 六、忽略清单与分流 |
-| 写漏洞报告（Markdown 四段式） | → 按 `../../../../rules/40-evidence-report.md` |
+| 写漏洞报告（Markdown 四段式） | → 按 `../../../rules/40-evidence-report.md` |
 | 通用加固清单 | → 八、通用修复建议 |

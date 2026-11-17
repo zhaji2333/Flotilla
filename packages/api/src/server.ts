@@ -20,6 +20,7 @@ import {
   getMetrics,
   getMission,
   listArtifacts,
+  listCoverageRequirements,
   getMissionBoard,
   getMissionTraceSummary,
   getMissionFrontier,
@@ -675,6 +676,10 @@ async function handleRoute(request: http.IncomingMessage, url: URL, auth: AuthCo
         limit,
       });
       return result ? json(200, { search: result }) : json(404, { error: 'mission not found' });
+    }
+    // v1.0.2 coverage requirements (ADR-0054).
+    if (parts.length === 4 && parts[3] === 'coverage' && method === 'GET') {
+      return json(200, { requirements: await listCoverageRequirements(missionId) });
     }
     // P3-B3 same-mission intel (read-only; no cross-mission path).
     if (parts.length === 4 && parts[3] === 'intel' && method === 'GET') {

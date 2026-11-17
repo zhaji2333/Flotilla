@@ -20,7 +20,7 @@
 | **认** | env、`/proc/1/environ`、`/etc/*-config`、openclaw.json、SA Token、s6 env、chat-history |
 | **打** | 抄到后 **假值对照**；认钥枪必须带出身份或列表（云 SDK 列 bucket/项目、模型网关返回模型列表、K8s `kubectl auth can-i`） |
 | **算成** | 生产认了，且带出身份/列表。进了别人号或改了别人的绑 → 另开「接管」口径 |
-| **假点** | 只抄到字符串；占位/过期；真假同一句错。**没过认钥闸不写报告**（`../../../../rules/40-evidence-report.md`） |
+| **假点** | 只抄到字符串；占位/过期；真假同一句错。**没过认钥闸不写报告**（`../../../rules/40-evidence-report.md`） |
 
 ### 8.3 沙箱内提权
 
